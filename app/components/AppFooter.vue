@@ -1,0 +1,2 @@
+<template><footer class="footer"><div class="container footer-row"><span>Uso orientativo · Valide decisiones fitosanitarias con un profesional.</span><NuxtLink to="/fecoclima-ia">Política de privacidad</NuxtLink><span>FECOCLIMA IA © 2026</span></div></footer></template>
+<style scoped>.footer{background:var(--fc-secondary);color:#fff}.footer-row{min-height:54px;display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:.88rem}@media(max-width:720px){.footer-row{padding:15px 0;align-items:flex-start;flex-direction:column;gap:8px}}</style>

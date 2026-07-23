@@ -1,0 +1,2 @@
+<script setup lang="ts">definePageMeta({layout:'admin',middleware:'admin-auth'}); const fields=[]</script>
+<template><AdminCrudPage title="Auditoría" description="Inicios de sesión, cambios administrativos, sincronizaciones y errores." endpoint="/audit" :fields="fields" :columns="[{key:'created_at',label:'Fecha'},{key:'actor_email',label:'Responsable'},{key:'action',label:'Acción'},{key:'entity_type',label:'Entidad'},{key:'entity_id',label:'ID'},{key:'ip_address',label:'IP'}]"/></template>

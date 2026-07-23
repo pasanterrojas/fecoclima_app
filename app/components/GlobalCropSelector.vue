@@ -1,0 +1,2 @@
+<script setup lang="ts">import type { Crop } from '~/types/api'; defineProps<{ modelValue:string; crops:Crop[] }>(); defineEmits<{ 'update:modelValue':[value:string] }>()</script>
+<template><label><span class="label">Cultivo</span><select class="select" :value="modelValue" @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"><option v-for="crop in crops" :key="crop.id" :value="crop.code">{{ crop.name }}<template v-if="crop.rules_status !== 'active'"> · Configuración pendiente</template></option></select></label></template>

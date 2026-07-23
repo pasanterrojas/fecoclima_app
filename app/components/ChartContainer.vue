@@ -1,0 +1,3 @@
+<script setup lang="ts">defineProps<{ title:string; subtitle?:string; loading?:boolean }>()</script>
+<template><article class="card chart-card"><div class="card-body"><div class="row-between chart-head"><div><h3>{{ title }}</h3><p v-if="subtitle">{{ subtitle }}</p></div><slot name="actions"/></div><div v-if="loading" class="skeleton chart-loading"/><div v-else class="chart-slot"><slot/></div></div></article></template>
+<style scoped>.chart-head{margin-bottom:15px}h3{margin:0;color:var(--fc-primary)}p{margin:4px 0 0;color:var(--fc-text-muted);font-size:.85rem}.chart-slot{position:relative;min-height:300px}.chart-loading{min-height:300px}</style>

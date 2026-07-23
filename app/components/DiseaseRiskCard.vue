@@ -1,0 +1,3 @@
+<script setup lang="ts">import { Bug } from 'lucide-vue-next'; defineProps<{ disease:{name:string;risk:string;reason:string} }>()</script>
+<template><article class="card disease"><div class="row"><span class="bug"><Bug/></span><div><b>{{ disease.name }}</b><span class="badge" :class="disease.risk==='alto'?'badge-danger':disease.risk==='moderado'?'badge-warning':'badge-success'">{{ disease.risk }}</span></div></div><p>{{ disease.reason }}</p></article></template>
+<style scoped>.disease{padding:16px;box-shadow:none}.bug{width:38px;height:38px;display:grid;place-items:center;border-radius:10px;background:#eef6fa;color:var(--fc-primary)}.bug svg{width:21px}.row b{margin-right:8px;color:var(--fc-primary)}p{margin:12px 0 0;color:var(--fc-text-muted);font-size:.88rem}</style>
