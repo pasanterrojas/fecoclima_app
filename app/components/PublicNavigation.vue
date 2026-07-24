@@ -4,8 +4,6 @@ defineProps<{ open?: boolean }>()
 defineEmits<{ navigate: [] }>()
 const links = [
   { to: '/fecoclima-ia', label: 'Clima', icon: CloudSun },
-  { to: '/fecoclima-ia#pronostico', label: 'Pronóstico', icon: RadioTower },
-  { to: '/fecoclima-ia/estaciones', label: 'Estaciones', icon: RadioTower },
   { to: '/fecoclima-ia/mapas', label: 'Mapas', icon: MapPinned },
   { to: '/fecoclima-ia/fenologia', label: 'Fenología', icon: Sprout },
   { to: '/fecoclima-ia/reportes', label: 'Reportes', icon: FileText },

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, BookOpen, Boxes, ClipboardList, CloudDownload, CloudSun, FileText, Gauge, History, LayoutDashboard, MapPinned, Settings, ShieldCheck, Sprout, Users, X } from 'lucide-vue-next'
+import { BellRing, Bot, ClipboardList, CloudDownload, CloudSun, FileText, Gauge, History, LayoutDashboard, MapPinned, Settings, ShieldCheck, Sprout, Users, X } from 'lucide-vue-next'
 defineProps<{ open:boolean }>()
 defineEmits<{ close:[] }>()
 const links=[
@@ -9,10 +9,9 @@ const links=[
  {to:'/admin/importaciones',label:'Datos y sincronización',icon:CloudDownload},
  {to:'/admin/parcelas',label:'Parcelas',icon:MapPinned},
  {to:'/admin/cultivos',label:'Cultivos',icon:Sprout},
- {to:'/admin/ciclos',label:'Ciclos',icon:Boxes},
  {to:'/admin/reglas',label:'Reglas',icon:ClipboardList},
  {to:'/admin/agentes',label:'Agentes IA',icon:Bot},
- {to:'/admin/conocimiento',label:'Conocimiento',icon:BookOpen},
+ {to:'/admin/notificaciones',label:'Avisos a productores',icon:BellRing},
  {to:'/admin/integraciones',label:'Integraciones',icon:Gauge},
  {to:'/admin/reportes',label:'Reportes',icon:FileText},
  {to:'/admin/auditoria',label:'Auditoría',icon:History},
