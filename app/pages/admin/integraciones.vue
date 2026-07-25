@@ -2,64 +2,18 @@
 definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
 
 const { request } = useApi()
-const stations = ref<Record<string, any>[]>([])
+const stations = ref<any[]>([])
 const selectedStationId = ref('')
-const stationsLoading = ref(true)
-const stationsError = ref('')
-const refreshingScene = ref(false)
-const sceneMessage = ref('')
-const sceneDetails = ref<Record<string, any> | null>(null)
-
-const selectedStation = computed(() => stations.value.find(item => item.id === selectedStationId.value) || null)
-const selectedGeometry = computed(() => {
-  const station = selectedStation.value
-  if (!station) return { ready: false, source: 'NONE', label: 'Seleccione una estación', detail: 'La prueba satelital debe ejecutarse sobre una estación concreta.' }
-  const raw = station.influence_geojson
-  const geometry = raw?.type === 'Feature' ? raw.geometry : raw
-  if (geometry && ['Polygon', 'MultiPolygon'].includes(geometry.type)) {
-    return { ready: true, source: 'POLYGON', label: 'Polígono configurado', detail: 'Copernicus usará exactamente la zona dibujada en la estación.' }
-  }
-  if (station.latitude !== null && station.latitude !== undefined && station.longitude !== null && station.longitude !== undefined) {
-    return { ready: true, source: 'POINT_RADIUS', label: 'Coordenadas + radio', detail: `Se usará un área aproximada de ${station.influence_radius_m || 750} m alrededor de la estación.` }
-  }
-  return { ready: false, source: 'NONE', label: 'Geozona incompleta', detail: 'Vaya a Estaciones y dibuje un polígono o registre latitud y longitud.' }
-})
 
 async function loadStations() {
-  stationsLoading.value = true
-  stationsError.value = ''
   try {
-    const data: any = await request('/stations', { query: { limit: 250 } })
-    stations.value = (data.items || []).filter((item: any) => item.active !== false)
-    if (!stations.value.some(item => item.id === selectedStationId.value)) {
-      selectedStationId.value = stations.value[0]?.id || ''
+    const result: any = await request('/stations', { query: { limit: 250 } })
+    stations.value = (result.items || []).filter((item: any) => item.active !== false)
+    if (!selectedStationId.value && stations.value.length) {
+      selectedStationId.value = stations.value.find((item: any) => item.code === 'RAUL-PENA')?.id || stations.value[0].id
     }
-  } catch (error: any) {
-    stationsError.value = error?.data?.detail || error?.message || 'No fue posible cargar las estaciones.'
-  } finally {
-    stationsLoading.value = false
-  }
-}
-
-async function refreshSatelliteScene() {
-  if (!selectedStationId.value || !selectedGeometry.value.ready) return
-  refreshingScene.value = true
-  sceneMessage.value = ''
-  sceneDetails.value = null
-  try {
-    const result: any = await request(`/satellite/stations/${selectedStationId.value}/sync`, {
-      method: 'POST',
-      query: { force: true }
-    })
-    sceneDetails.value = result
-    sceneMessage.value = result.status === 'PROCESSED'
-      ? 'La escena y los índices fueron procesados y guardados.'
-      : `La actualización terminó con estado ${result.status || 'desconocido'}. Revise el detalle.`
-  } catch (error: any) {
-    sceneMessage.value = error?.data?.detail || error?.message || 'No fue posible procesar la escena satelital.'
-    sceneDetails.value = error?.data || null
-  } finally {
-    refreshingScene.value = false
+  } catch {
+    stations.value = []
   }
 }
 
@@ -92,8 +46,8 @@ const fields = [
     label: 'Parámetros JSON',
     type: 'textarea',
     json: true,
-    placeholder: '{\n  "client_id": "su-client-id",\n  "token_url": "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",\n  "stac_search_url": "https://stac.dataspace.copernicus.eu/v1/search",\n  "process_url": "https://sh.dataspace.copernicus.eu/process/v1",\n  "statistics_url": "https://sh.dataspace.copernicus.eu/statistics/v1",\n  "collection": "sentinel-2-l2a"\n}',
-    hint: 'Copernicus usa client_id aquí y client_secret en el campo cifrado siguiente.'
+    placeholder: '{\n  "client_id": "su-client-id",\n  "token_url": "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",\n  "stac_search_url": "https://stac.dataspace.copernicus.eu/v1/search",\n  "process_url": "https://sh.dataspace.copernicus.eu/process/v1",\n  "statistics_url": "https://sh.dataspace.copernicus.eu/statistics/v1",\n  "collection": "sentinel-2-l2a",\n  "analysis_max_age_days": 20,\n  "analysis_max_reliable_cloud_percentage": 30,\n  "ndvi_low_threshold": 0.25,\n  "ndvi_active_threshold": 0.55,\n  "ndmi_dry_threshold": 0.0,\n  "ndmi_moist_threshold": 0.2,\n  "ndwi_water_threshold": 0.1,\n  "ndvi_decline_delta": -0.08,\n  "ndmi_decline_delta": -0.05\n}',
+    hint: 'Copernicus usa client_id aquí y client_secret en el campo cifrado siguiente. El backend permite sobrescribir token, STAC, Process y Statistics sin cambiar código.'
   },
   {
     key: 'secret_value',
@@ -107,52 +61,29 @@ const fields = [
 
 <template>
   <section>
-    <div class="card station-test-card">
-      <div class="card-body">
-        <div class="station-test-head">
-          <div>
-            <h2>Prueba satelital por estación</h2>
-            <p>Seleccione la estación que desea validar. La prueba leerá directamente el polígono guardado en <b>Admin → Estaciones</b>; no utilizará parcelas antiguas como fuente de la geometría.</p>
-          </div>
-          <div class="station-actions">
-            <button class="btn btn-light" type="button" :disabled="stationsLoading" @click="loadStations">Actualizar estaciones</button>
-            <button class="btn btn-primary" type="button" :disabled="refreshingScene || !selectedGeometry.ready" @click="refreshSatelliteScene">
-              {{ refreshingScene ? 'Procesando…' : 'Procesar imagen e índices' }}
-            </button>
-          </div>
-        </div>
-        <div v-if="stationsError" class="notice test-danger">{{ stationsError }}</div>
-        <div class="station-test-grid">
-          <label>
-            <span class="label">Estación para la prueba</span>
-            <select v-model="selectedStationId" class="select" :disabled="stationsLoading">
-              <option value="">Seleccione una estación</option>
-              <option v-for="station in stations" :key="station.id" :value="station.id">
-                {{ station.name }} · {{ station.code }}
-              </option>
-            </select>
-          </label>
-          <div class="geometry-state" :class="selectedGeometry.ready ? 'is-ready' : 'is-error'">
-            <b>{{ selectedGeometry.label }}</b>
-            <span>{{ selectedGeometry.detail }}</span>
-            <small v-if="selectedStation">Latitud {{ selectedStation.latitude ?? '—' }} · Longitud {{ selectedStation.longitude ?? '—' }}</small>
-          </div>
-        </div>
-        <p class="station-test-help">Después de cambiar un polígono, la integración quedará como <b>RETEST_REQUIRED</b>. Pulse el matraz de Sentinel-2 para validar credenciales y fases. Luego use <b>Procesar imagen e índices</b> para guardar la escena que alimenta el widget público.</p>
-        <div v-if="sceneMessage" class="notice scene-result">
-          <b>{{ sceneMessage }}</b>
-          <pre v-if="sceneDetails" class="scene-json">{{ JSON.stringify(sceneDetails, null, 2) }}</pre>
-        </div>
-      </div>
+    <div class="station-test-card">
+      <label>
+        <span class="label">Estación utilizada en la prueba</span>
+        <select v-model="selectedStationId" class="select">
+          <option value="">Selección automática</option>
+          <option v-for="station in stations" :key="station.id" :value="station.id">
+            {{ station.name }}
+          </option>
+        </select>
+        <small>Sentinel-2 y Open-Meteo probarán exactamente la estación seleccionada. Así el resultado no se mezcla con parcelas o estaciones heredadas.</small>
+      </label>
     </div>
-
+    <div class="notice integration-guide">
+      <b>¿Qué significa FAILED en Sentinel-2?</b>
+      <span>Es el resultado de la última prueba manual o ejecución registrada. La columna “Detalle” muestra ahora la fase exacta que falló: catálogo STAC, OAuth, generación RGB o estadísticas espectrales.</span>
+    </div>
     <AdminCrudPage
       title="Integraciones"
-      description="Configure y pruebe FECOCLIMA, Open-Meteo, Copernicus, IA y correo. La prueba de Sentinel-2 se ejecuta para la estación seleccionada arriba."
+      description="Configure y pruebe FECOCLIMA, Open-Meteo, Copernicus, IA y correo. Las credenciales de Copernicus pueden administrarse cifradas desde este panel o mantenerse en el .env como respaldo."
       endpoint="/integrations"
       :fields="fields as any"
       :allow-test="true"
-      :test-query="selectedStationId ? { station_id: selectedStationId } : {}"
+      :test-query="() => selectedStationId ? { station_id: selectedStationId } : {}"
       :columns="[
         { key: 'name', label: 'Nombre' },
         { key: 'integration_type', label: 'Tipo' },
@@ -166,6 +97,4 @@ const fields = [
   </section>
 </template>
 
-<style scoped>
-.station-test-card{margin-bottom:18px}.station-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.station-test-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.station-test-head h2{margin:0 0 6px}.station-test-head p{margin:0;color:var(--fc-text-muted);max-width:850px}.station-test-grid{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:16px;margin-top:18px;align-items:end}.geometry-state{display:flex;flex-direction:column;gap:4px;padding:13px 15px;border:1px solid;border-radius:10px}.geometry-state.is-ready{background:#edf9f2;border-color:#9fd5b7}.geometry-state.is-error{background:#fff0f0;border-color:#efb0b0}.geometry-state span,.geometry-state small{color:var(--fc-text-muted)}.station-test-help{margin:14px 0 0;color:var(--fc-text-muted)}.scene-result{margin-top:14px}.scene-result b{display:block}.scene-json{max-height:300px;overflow:auto;margin:10px 0 0;padding:10px;border-radius:8px;background:rgba(255,255,255,.72);white-space:pre-wrap;font-size:.76rem;line-height:1.45}.test-danger{background:#fff0f0;border-color:#efb0b0;margin-top:12px}@media(max-width:760px){.station-test-head{flex-direction:column}.station-test-grid{grid-template-columns:1fr}}
-</style>
+<style scoped>.station-test-card{margin-bottom:14px;padding:14px;border:1px solid var(--fc-border);border-radius:12px;background:var(--fc-surface-muted)}.station-test-card label{display:flex;flex-direction:column;gap:6px;max-width:520px}.station-test-card small{color:var(--fc-text-muted)}.integration-guide{display:flex;flex-direction:column;gap:4px;margin-bottom:16px}</style>

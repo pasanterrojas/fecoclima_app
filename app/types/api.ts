@@ -166,6 +166,9 @@ export interface SatelliteObservation {
   scene_id?: string | null
   geometry_mode?: string | null
   processing_error?: string | null
+  image_available?: boolean
+  index_images?: Record<string, string | null>
+  visual_layers_available?: number
   indices?: Record<string, number | null>
   statistics?: Record<string, {
     min?: number | null
@@ -206,6 +209,69 @@ export interface SatelliteAnalysis {
   statistics?: Record<string, any>
   thresholds?: Record<string, number>
   agent_policy?: Record<string, any>
+}
+
+export interface SatelliteMapScene {
+  scene_id: string
+  captured_at: string
+  cloud_percentage?: number | null
+  preview_url?: string | null
+  processed: boolean
+  observation_id?: string | null
+  processing_status?: string | null
+  image_available: boolean
+  indices_available: number
+}
+
+export interface SatelliteMapInterpretation {
+  level: 'ATTENTION' | 'WATCH' | 'LIMITED' | 'NO_DATA' | string
+  headline: string
+  summary: string
+  actions: string[]
+  what_to_watch: string[]
+  limitations: string[]
+  deltas?: { ndvi?: number | null; ndmi?: number | null }
+}
+
+export interface SatelliteMapContext {
+  station: Pick<Station, 'id' | 'name' | 'code' | 'locality' | 'latitude' | 'longitude'> & { timezone?: string | null }
+  crop: Pick<Crop, 'id' | 'code' | 'name'>
+  geometry: Record<string, any>
+  geometry_source: 'POLYGON' | 'POINT_RADIUS' | string
+  geometry_bounds: { west: number; south: number; east: number; north: number }
+  area_ha?: number | null
+  observation?: SatelliteObservation | null
+  previous_observation?: SatelliteObservation | null
+  processed_observations: Array<Record<string, any>>
+  catalog_scenes: SatelliteMapScene[]
+  catalog_status?: 'CURRENT' | 'STALE_CACHE' | 'DEGRADED' | 'FAILED' | string
+  catalog_warning?: string | null
+  catalog_error?: string | null
+  weather_on_capture?: Record<string, any> | null
+  latest_station_reading?: Record<string, any> | null
+  forecast: Array<Record<string, any>>
+  interpretation: SatelliteMapInterpretation
+  runtime_config: {
+    max_cloud_percentage: number
+    lookback_days: number
+    history_days: number
+    history_limit: number
+    refresh_hours: number
+    catalog_limit: number
+    minimum_valid_pixels: number
+    default_map_opacity: number
+  }
+  context_date?: string | null
+  generated_at: string
+}
+
+export interface SatelliteMapAgentResult {
+  markdown: string
+  sources?: Array<{ documento?: string; pagina_o_seccion?: string }>
+  model?: string | null
+  fallback?: boolean
+  reason?: string
+  run_id?: string
 }
 
 export interface SourceSyncStatus {

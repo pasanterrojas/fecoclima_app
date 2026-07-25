@@ -22,6 +22,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ refresh: []; agentRefresh: [] }>()
 const config = useRuntimeConfig()
 const selectedStatistic = ref('ndvi')
+const selectedLayer = ref('true_color')
 
 const indexDefinitions: Record<string, { label: string; meaning: string }> = {
   ndvi: { label: 'NDVI', meaning: 'Vigor y cobertura vegetal' },
@@ -35,8 +36,7 @@ const indexDefinitions: Record<string, { label: string; meaning: string }> = {
   msi: { label: 'MSI', meaning: 'Estrés hídrico relativo; mayor puede indicar sequedad' },
 }
 
-const imageUrl = computed(() => {
-  const source = props.data?.source_url
+function resolveImageUrl(source?: string | null): string | null {
   if (!source) return null
   if (/^https?:\/\//i.test(source)) return source
   try {
@@ -45,7 +45,16 @@ const imageUrl = computed(() => {
   } catch {
     return source
   }
+}
+const visualLayers = computed(() => {
+  const rows = [{ key: 'true_color', label: 'Color real', meaning: 'Sentinel-2 RGB', url: props.data?.image_available ? resolveImageUrl(props.data?.source_url) : null }]
+  for (const [key, definition] of Object.entries(indexDefinitions)) {
+    rows.push({ key, label: definition.label, meaning: definition.meaning, url: resolveImageUrl(props.data?.index_images?.[key]) })
+  }
+  return rows
 })
+const selectedVisualLayer = computed(() => visualLayers.value.find(item => item.key === selectedLayer.value) || visualLayers.value[0])
+const imageUrl = computed(() => selectedVisualLayer.value?.url || null)
 const captureLabel = computed(() => props.data?.captured_at ? new Date(props.data.captured_at).toLocaleString('es-PY') : 'No indicada')
 const analysis = computed(() => props.data?.analysis || null)
 const qualityClass = computed(() => analysis.value?.reliability === 'alta' ? 'badge-success' : analysis.value?.reliability === 'media' ? 'badge-warning' : 'badge-danger')
@@ -81,6 +90,17 @@ const sceneMetadataRows = computed(() => {
 watch(availableStatistics, keys => {
   if (keys.length && !keys.includes(selectedStatistic.value)) selectedStatistic.value = keys[0]
 }, { immediate: true })
+watch(visualLayers, rows => {
+  const available = rows.filter(item => item.url).map(item => item.key)
+  if (!available.includes(selectedLayer.value)) selectedLayer.value = available[0] || 'true_color'
+}, { immediate: true })
+
+function selectLayer(key: string) {
+  const layer = visualLayers.value.find(item => item.key === key)
+  if (!layer?.url) return
+  selectedLayer.value = key
+  if (key !== 'true_color') selectedStatistic.value = key
+}
 
 function indexLabel(value?: number | null): string {
   return value == null ? '—' : Number(value).toFixed(3)
@@ -125,11 +145,17 @@ function metadataValue(value: any): string {
       <template v-if="data">
         <div class="sat-layout">
           <div class="image-panel">
-            <img v-if="imageUrl" class="satellite-image" :src="imageUrl" alt="Observación Sentinel-2 de la geozona seleccionada">
+            <div class="layer-selector" role="list" aria-label="Capas Sentinel-2">
+              <button v-for="layer in visualLayers" :key="layer.key" type="button" :disabled="!layer.url" :class="{ active: selectedLayer === layer.key }" @click="selectLayer(layer.key)">
+                <b>{{ layer.label }}</b><span>{{ layer.meaning }}</span>
+              </button>
+            </div>
+            <div class="selected-layer-label"><Image /><span>Mostrando <b>{{ selectedVisualLayer?.label }}</b> · misma escena, fecha y polígono</span></div>
+            <img v-if="imageUrl" class="satellite-image" :src="imageUrl" :alt="`Capa ${selectedVisualLayer?.label || 'Sentinel-2'} de la geozona seleccionada`">
             <div v-else class="image-empty">
               <Image />
-              <b>Escena localizada sin imagen RGB procesada</b>
-              <span>El catálogo STAC puede responder sin OAuth. Para calcular imagen e índices configure client_id y client_secret de Copernicus.</span>
+              <b>La capa seleccionada todavía no está procesada</b>
+              <span>Actualice la escena para generar color real y los nueve mapas espectrales desde la misma adquisición.</span>
             </div>
             <div class="image-meta">
               <span><MapPinned /> {{ data.plot_name || 'Geozona' }}</span>
@@ -150,10 +176,11 @@ function metadataValue(value: any): string {
             <p v-if="analysis?.summary" class="summary">{{ analysis.summary }}</p>
 
             <div class="index-grid">
-              <div v-for="index in indexRows" :key="index.key" :class="{ unavailable: index.value == null }">
+              <button v-for="index in indexRows" :key="index.key" type="button" :disabled="!data.index_images?.[index.key]" :class="{ unavailable: index.value == null, active: selectedLayer === index.key }" @click="selectLayer(index.key)">
                 <span>{{ index.label }} · {{ index.meaning }}</span>
                 <b>{{ indexLabel(index.value) }}</b>
-              </div>
+                <small>{{ data.index_images?.[index.key] ? 'Ver mapa' : 'Sin mapa' }}</small>
+              </button>
               <div><span>Resolución espacial</span><b>{{ data.resolution_m ? `${data.resolution_m} m` : '—' }}</b></div>
             </div>
 
@@ -161,6 +188,7 @@ function metadataValue(value: any): string {
               <div><dt>Geometría</dt><dd>{{ analysis?.geometry_label || data.geometry_mode || 'No indicada' }}</dd></div>
               <div><dt>Área</dt><dd>{{ data.plot_area_ha == null ? 'No registrada' : `${data.plot_area_ha} ha` }}</dd></div>
               <div><dt>Procesamiento</dt><dd>{{ data.processing_status || 'No indicado' }}</dd></div>
+              <div><dt>Mapas de índices</dt><dd>{{ data.visual_layers_available || 0 }} de 9</dd></div>
               <div><dt>Escena</dt><dd>{{ data.scene_id || 'No indicada' }}</dd></div>
             </dl>
           </div>
@@ -215,7 +243,7 @@ function metadataValue(value: any): string {
 
         <p v-if="data.processing_status === 'CATALOG_ONLY'" class="notice notice-warning small">El catálogo encontró la escena, pero todavía no calculó imagen ni índices. Abra Integraciones, edite Sentinel-2, configure OAuth y ejecute la prueba.</p>
         <p v-if="data.processing_error" class="notice notice-warning small">Procesamiento satelital: {{ data.processing_error }}</p>
-        <a v-if="imageUrl && /^https?:\/\//i.test(data.source_url || '')" :href="imageUrl" target="_blank" rel="noopener" class="source-link"><ExternalLink /> Abrir fuente de imagen</a>
+        <a v-if="selectedLayer === 'true_color' && imageUrl && /^https?:\/\//i.test(data.source_url || '')" :href="imageUrl" target="_blank" rel="noopener" class="source-link"><ExternalLink /> Abrir fuente de imagen</a>
       </template>
 
       <div v-else class="empty-evidence">
@@ -232,5 +260,5 @@ function metadataValue(value: any): string {
 </template>
 
 <style scoped>
-.satellite-card{overflow:hidden}.sat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.title-row{align-items:flex-start}.sat-icon{display:grid;place-items:center;flex:0 0 48px;height:48px;border-radius:14px;background:#e7f3fa;color:var(--fc-primary)}.sat-icon svg{width:26px}.eyebrow{display:block;margin-bottom:3px;color:var(--fc-secondary);font-size:.74rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}h3,h4,p{margin:0}h3,h4{color:var(--fc-primary)}.title-row p,.section-heading p{margin-top:5px;color:var(--fc-text-muted);font-size:.88rem}.sat-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.sat-actions svg{width:16px}.sat-layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(340px,.95fr);gap:18px;margin-top:18px}.image-panel,.evidence-panel{min-width:0}.satellite-image,.image-empty{width:100%;height:390px;border:1px solid var(--fc-border);border-radius:14px}.satellite-image{display:block;object-fit:cover}.image-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;background:var(--fc-surface-muted);color:var(--fc-text-muted)}.image-empty svg{width:44px;height:44px;color:var(--fc-primary)}.image-empty b{color:var(--fc-primary)}.image-meta{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:9px;color:var(--fc-text-muted);font-size:.78rem}.image-meta span{display:inline-flex;align-items:center;gap:5px}.image-meta svg{width:14px}.evidence-panel{padding:17px;border:1px solid var(--fc-border);border-radius:14px;background:linear-gradient(180deg,#fff,var(--fc-surface-muted))}.quality-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.quality-row>div span{display:block;color:var(--fc-text-muted);font-size:.76rem}.quality-row>div b{display:block;margin-top:2px;color:var(--fc-primary);font-size:1.45rem}.summary{margin:13px 0;padding:10px 12px;border-radius:9px;background:#e9f3f9;color:var(--fc-primary);font-weight:800}.index-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.index-grid>div{padding:10px;border:1px solid var(--fc-border);border-radius:9px;background:#fff}.index-grid>div.unavailable{opacity:.58}.index-grid span{display:block;color:var(--fc-text-muted);font-size:.68rem;line-height:1.35}.index-grid b{display:block;margin-top:4px;color:var(--fc-primary);font-size:1rem}.details{margin:14px 0 0}.details>div{display:grid;grid-template-columns:105px 1fr;gap:10px;padding:7px 0;border-bottom:1px dashed var(--fc-border);font-size:.8rem}.details dt{color:var(--fc-text-muted)}.details dd{margin:0;font-weight:700;overflow-wrap:anywhere}.statistics-section,.scene-section,.signal-section,.agent-interpretation,.agent-evidence,.limitations{margin-top:18px}.statistics-section,.scene-section{padding:15px;border:1px solid var(--fc-border);border-radius:12px}.section-heading{display:flex;align-items:flex-start;gap:9px}.section-heading>svg{flex:0 0 23px;color:var(--fc-primary)}.statistics-toolbar{max-width:260px;margin-top:12px}.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px}.stats-grid>div{padding:10px;border-radius:9px;background:var(--fc-surface-muted)}.stats-grid span{display:block;color:var(--fc-text-muted);font-size:.69rem}.stats-grid b{display:block;margin-top:3px;color:var(--fc-primary)}.percentiles{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.percentiles span{padding:6px 8px;border-radius:7px;background:#edf7fb;font-size:.75rem}.scene-section dl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 0}.scene-section dl>div{padding:9px;border-radius:8px;background:var(--fc-surface-muted)}.scene-section dt{color:var(--fc-text-muted);font-size:.7rem}.scene-section dd{margin:3px 0 0;font-weight:700;font-size:.8rem;overflow-wrap:anywhere}.signal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px}.signal{padding:13px;border-left:4px solid;border-radius:10px;background:var(--fc-surface-muted)}.signal>div{display:flex;justify-content:space-between;gap:10px}.signal strong{white-space:nowrap}.signal p{margin-top:6px;color:var(--fc-text-muted);font-size:.81rem;line-height:1.45}.signal-positive{border-color:var(--fc-success)}.signal-info{border-color:var(--fc-secondary)}.signal-attention{border-color:var(--fc-warning)}.agent-interpretation{padding:17px;border-radius:13px;background:linear-gradient(135deg,#edf7fb,#fff)}.agent-interpretation .section-heading{margin-bottom:12px}.agent-evidence,.limitations{padding:14px 16px;border-radius:12px}.agent-evidence{background:#edf7fb}.limitations{background:#fff8e8}.agent-evidence ul,.limitations ul{margin:8px 0 0;padding-left:18px}.agent-evidence li,.limitations li{margin:4px 0;font-size:.84rem}.empty-evidence{display:flex;align-items:center;gap:13px;margin-top:18px;padding:22px;border:1px dashed var(--fc-border);border-radius:13px;background:var(--fc-surface-muted)}.empty-evidence>svg{width:38px;color:var(--fc-primary)}.empty-evidence b{color:var(--fc-primary)}.empty-evidence p{margin-top:4px;color:var(--fc-text-muted)}.source-link{display:inline-flex;align-items:center;gap:6px;margin-top:12px;color:var(--fc-primary);font-weight:800;font-size:.84rem}.source-link svg{width:16px}.method-note{margin-top:16px;color:var(--fc-text-muted);font-size:.78rem}.spinning{animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:1100px){.stats-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:900px){.sat-head{flex-direction:column}.sat-actions{justify-content:flex-start}.sat-layout{grid-template-columns:1fr}.satellite-image,.image-empty{height:320px}.scene-section dl{grid-template-columns:1fr 1fr}}@media(max-width:560px){.index-grid,.stats-grid,.scene-section dl{grid-template-columns:1fr}.details>div{grid-template-columns:1fr;gap:2px}.satellite-image,.image-empty{height:250px}.sat-actions{width:100%}.sat-actions .btn{width:100%}}
+.satellite-card{overflow:hidden}.sat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.title-row{align-items:flex-start}.sat-icon{display:grid;place-items:center;flex:0 0 48px;height:48px;border-radius:14px;background:#e7f3fa;color:var(--fc-primary)}.sat-icon svg{width:26px}.eyebrow{display:block;margin-bottom:3px;color:var(--fc-secondary);font-size:.74rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}h3,h4,p{margin:0}h3,h4{color:var(--fc-primary)}.title-row p,.section-heading p{margin-top:5px;color:var(--fc-text-muted);font-size:.88rem}.sat-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.sat-actions svg{width:16px}.sat-layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(340px,.95fr);gap:18px;margin-top:18px}.image-panel,.evidence-panel{min-width:0}.layer-selector{display:flex;gap:7px;margin-bottom:9px;padding-bottom:4px;overflow-x:auto}.layer-selector button{flex:0 0 116px;padding:8px 9px;border:1px solid var(--fc-border);border-radius:9px;background:#fff;text-align:left;color:var(--fc-text)}.layer-selector button b,.layer-selector button span{display:block}.layer-selector button b{color:var(--fc-primary)}.layer-selector button span{margin-top:2px;color:var(--fc-text-muted);font-size:.65rem;line-height:1.25}.layer-selector button.active{border-color:var(--fc-primary);background:#edf8fd;box-shadow:0 0 0 2px rgba(0,113,172,.12)}.layer-selector button:disabled{opacity:.42}.selected-layer-label{display:flex;align-items:center;gap:7px;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:var(--fc-surface-muted);color:var(--fc-text-muted);font-size:.76rem}.selected-layer-label svg{width:16px;color:var(--fc-primary)}.satellite-image,.image-empty{width:100%;height:390px;border:1px solid var(--fc-border);border-radius:14px}.satellite-image{display:block;object-fit:cover}.image-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;background:var(--fc-surface-muted);color:var(--fc-text-muted)}.image-empty svg{width:44px;height:44px;color:var(--fc-primary)}.image-empty b{color:var(--fc-primary)}.image-meta{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:9px;color:var(--fc-text-muted);font-size:.78rem}.image-meta span{display:inline-flex;align-items:center;gap:5px}.image-meta svg{width:14px}.evidence-panel{padding:17px;border:1px solid var(--fc-border);border-radius:14px;background:linear-gradient(180deg,#fff,var(--fc-surface-muted))}.quality-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.quality-row>div span{display:block;color:var(--fc-text-muted);font-size:.76rem}.quality-row>div b{display:block;margin-top:2px;color:var(--fc-primary);font-size:1.45rem}.summary{margin:13px 0;padding:10px 12px;border-radius:9px;background:#e9f3f9;color:var(--fc-primary);font-weight:800}.index-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.index-grid>button,.index-grid>div{padding:10px;border:1px solid var(--fc-border);border-radius:9px;background:#fff;text-align:left;color:inherit}.index-grid>button{cursor:pointer}.index-grid>button:disabled{cursor:not-allowed}.index-grid>button.active{border-color:var(--fc-primary);box-shadow:0 0 0 2px rgba(0,113,172,.12)}.index-grid>button.unavailable{opacity:.58}.index-grid span{display:block;color:var(--fc-text-muted);font-size:.68rem;line-height:1.35}.index-grid b{display:block;margin-top:4px;color:var(--fc-primary);font-size:1rem}.index-grid small{display:block;margin-top:4px;color:var(--fc-secondary);font-size:.66rem;font-weight:800}.details{margin:14px 0 0}.details>div{display:grid;grid-template-columns:105px 1fr;gap:10px;padding:7px 0;border-bottom:1px dashed var(--fc-border);font-size:.8rem}.details dt{color:var(--fc-text-muted)}.details dd{margin:0;font-weight:700;overflow-wrap:anywhere}.statistics-section,.scene-section,.signal-section,.agent-interpretation,.agent-evidence,.limitations{margin-top:18px}.statistics-section,.scene-section{padding:15px;border:1px solid var(--fc-border);border-radius:12px}.section-heading{display:flex;align-items:flex-start;gap:9px}.section-heading>svg{flex:0 0 23px;color:var(--fc-primary)}.statistics-toolbar{max-width:260px;margin-top:12px}.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px}.stats-grid>div{padding:10px;border-radius:9px;background:var(--fc-surface-muted)}.stats-grid span{display:block;color:var(--fc-text-muted);font-size:.69rem}.stats-grid b{display:block;margin-top:3px;color:var(--fc-primary)}.percentiles{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.percentiles span{padding:6px 8px;border-radius:7px;background:#edf7fb;font-size:.75rem}.scene-section dl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 0}.scene-section dl>div{padding:9px;border-radius:8px;background:var(--fc-surface-muted)}.scene-section dt{color:var(--fc-text-muted);font-size:.7rem}.scene-section dd{margin:3px 0 0;font-weight:700;font-size:.8rem;overflow-wrap:anywhere}.signal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px}.signal{padding:13px;border-left:4px solid;border-radius:10px;background:var(--fc-surface-muted)}.signal>div{display:flex;justify-content:space-between;gap:10px}.signal strong{white-space:nowrap}.signal p{margin-top:6px;color:var(--fc-text-muted);font-size:.81rem;line-height:1.45}.signal-positive{border-color:var(--fc-success)}.signal-info{border-color:var(--fc-secondary)}.signal-attention{border-color:var(--fc-warning)}.agent-interpretation{padding:17px;border-radius:13px;background:linear-gradient(135deg,#edf7fb,#fff)}.agent-interpretation .section-heading{margin-bottom:12px}.agent-evidence,.limitations{padding:14px 16px;border-radius:12px}.agent-evidence{background:#edf7fb}.limitations{background:#fff8e8}.agent-evidence ul,.limitations ul{margin:8px 0 0;padding-left:18px}.agent-evidence li,.limitations li{margin:4px 0;font-size:.84rem}.empty-evidence{display:flex;align-items:center;gap:13px;margin-top:18px;padding:22px;border:1px dashed var(--fc-border);border-radius:13px;background:var(--fc-surface-muted)}.empty-evidence>svg{width:38px;color:var(--fc-primary)}.empty-evidence b{color:var(--fc-primary)}.empty-evidence p{margin-top:4px;color:var(--fc-text-muted)}.source-link{display:inline-flex;align-items:center;gap:6px;margin-top:12px;color:var(--fc-primary);font-weight:800;font-size:.84rem}.source-link svg{width:16px}.method-note{margin-top:16px;color:var(--fc-text-muted);font-size:.78rem}.spinning{animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:1100px){.stats-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:900px){.sat-head{flex-direction:column}.sat-actions{justify-content:flex-start}.sat-layout{grid-template-columns:1fr}.satellite-image,.image-empty{height:320px}.scene-section dl{grid-template-columns:1fr 1fr}}@media(max-width:560px){.index-grid,.stats-grid,.scene-section dl{grid-template-columns:1fr}.details>div{grid-template-columns:1fr;gap:2px}.satellite-image,.image-empty{height:250px}.sat-actions{width:100%}.sat-actions .btn{width:100%}}
 </style>

@@ -6,8 +6,7 @@ const links = [
   { to: '/fecoclima-ia', label: 'Clima', icon: CloudSun },
   { to: '/fecoclima-ia/mapas', label: 'Mapas', icon: MapPinned },
   { to: '/fecoclima-ia/fenologia', label: 'Fenología', icon: Sprout },
-  { to: '/fecoclima-ia/reportes', label: 'Reportes', icon: FileText },
-  { to: '/admin', label: 'Administración', icon: ShieldCheck }
+  { to: '/fecoclima-ia/reportes', label: 'Reportes', icon: FileText }
 ]
 </script>
 <template>

@@ -14,7 +14,6 @@ interface Field {
   min?: number
   max?: number
   hint?: string
-  defaultValue?: any
 }
 
 const props = defineProps<{
@@ -27,7 +26,7 @@ const props = defineProps<{
   allowCreate?: boolean
   allowDelete?: boolean
   allowTest?: boolean
-  testQuery?: Record<string, any>
+  testQuery?: Record<string, any> | (() => Record<string, any>)
   afterSave?: (row: Record<string, any>, context: { editing: boolean }) => Promise<void> | void
 }>()
 
@@ -64,7 +63,6 @@ function isJsonField(field: Field): boolean {
 }
 
 function initialValue(field: Field): any {
-  if (field.defaultValue !== undefined) return field.defaultValue
   if (field.type === 'checkbox') return true
   if (field.type === 'geojson-map') return null
   if (isJsonField(field)) return '{}'
@@ -260,10 +258,8 @@ async function testRow(row: Record<string, any>) {
   testMessage.value = ''
   testDetails.value = null
   try {
-    const result: any = await request(`${props.endpoint}/${row.id}/test`, {
-      method: 'POST',
-      query: props.testQuery
-    })
+    const query = typeof props.testQuery === 'function' ? props.testQuery() : (props.testQuery || {})
+    const result: any = await request(`${props.endpoint}/${row.id}/test`, { method: 'POST', query })
     testTone.value = result.status === 'FAILED' ? 'danger' : result.status === 'PARTIAL' ? 'warning' : 'success'
     testMessage.value = result.detail || 'Prueba completada correctamente.'
     testDetails.value = result.data || null
