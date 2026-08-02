@@ -162,7 +162,7 @@ async function refreshSatellite() {
       body: {
         station_id: dashboard.value.station.id,
         crop_code: dashboard.value.crop.code,
-        force: true
+        force: false
       }
     })
     dashboard.value.satellite = result.satellite

@@ -1,0 +1,79 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recibo - Tomás Ivano Amador Rozzi</title>
+<style>
+:root{--navy:#0d2238;--blue:#1f5e91;--cyan:#78c7d9;--paper:#f7fbfe;--line:#b8ccda;--ink:#152534}
+*{box-sizing:border-box}html,body{margin:0;background:#dfe8ef;font-family:Arial,Helvetica,sans-serif;color:var(--ink)}
+.editor-toolbar{position:sticky;top:0;z-index:9;max-width:210mm;margin:auto;background:#0d2238;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}.editor-toolbar span{display:block;font-size:12px;color:#b6d3e5}button{border:1px solid #7895aa;background:#17344f;color:white;padding:9px 13px;border-radius:4px;cursor:pointer}button.primary{background:#79c8da;color:#092036;font-weight:800}.toolbar-actions{display:flex;gap:8px}
+.sheet{width:210mm;min-height:297mm;margin:16px auto;background-color:var(--paper);background-image:linear-gradient(#dbe8f0 1px,transparent 1px),linear-gradient(90deg,#dbe8f0 1px,transparent 1px);background-size:10mm 10mm;padding:13mm 14mm;box-shadow:0 10px 35px #10223430;position:relative}
+.topbar{background:var(--navy);color:white;padding:10mm;display:grid;grid-template-columns:1fr auto;align-items:start;border-left:6px solid var(--cyan)}.brand{font-size:28px;font-weight:900;letter-spacing:4px}.brand small{display:block;font-size:9px;letter-spacing:2px;color:var(--cyan);margin-top:4px}.doc-title{text-align:right}.doc-title h1{margin:0;text-transform:uppercase;font-size:30px;letter-spacing:2px}.doc-title .code{font-family:Consolas,monospace;margin-top:6px;font-size:11px;color:#a4dbe6}
+.info{margin-top:8mm;display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--blue);background:#ffffffdd}.info .box{padding:8px;border-right:1px solid var(--line);min-height:16mm}.info .box:nth-child(4n){border-right:0}.info .wide{grid-column:span 2}.k{font-family:Consolas,monospace;font-size:8px;color:var(--blue);text-transform:uppercase;letter-spacing:1px}.v{font-size:11.2px;margin-top:4px;line-height:1.35}
+.section-head{display:flex;align-items:center;gap:8px;margin:9mm 0 4mm;font-family:Consolas,monospace;color:var(--navy);font-size:11px;font-weight:800}.section-head:after{content:"";height:1px;background:var(--blue);flex:1}
+.item{background:#fff;border:1px solid var(--line);margin-bottom:5mm;display:grid;grid-template-columns:12mm 1fr 34mm;align-items:stretch}.idx{background:#d8edf3;color:var(--navy);font-family:Consolas,monospace;font-weight:900;display:grid;place-items:center}.desc{padding:6mm}.desc h3{font-family:Consolas,monospace;color:var(--blue);margin:0 0 4px;font-size:13px}.desc p{font-size:10.6px;line-height:1.5;margin:0}.amt{display:grid;place-items:center;text-align:center;border-left:1px solid var(--line);font-family:Consolas,monospace;color:var(--navy);font-weight:900;font-size:12px}
+.bottom{display:grid;grid-template-columns:1fr 82mm;gap:12mm;margin-top:8mm}.notes{font-family:Consolas,monospace;font-size:9px;color:#4d6272;line-height:1.6}.totalbox{border:2px solid var(--navy);background:white}.tr{display:flex;justify-content:space-between;padding:9px 11px;border-bottom:1px solid var(--line);font-size:11px}.tr.total{background:var(--navy);color:white;font-size:15px;font-weight:900;border:0}
+.signature{position:absolute;left:14mm;right:14mm;bottom:15mm;display:flex;justify-content:space-between;align-items:end}.sig{border-top:1px solid var(--navy);width:75mm;text-align:center;padding-top:5px;font-size:10px}.stamp{font-family:Consolas,monospace;font-size:8px;color:#658095;text-align:right}
+.editable{outline:none;border-bottom:1px dashed #2a86a6}.amount{white-space:nowrap} @page{size:A4;margin:0}@media print{body{background:white}.sheet{margin:0;box-shadow:none}.no-print{display:none!important}.editable{border-bottom-color:transparent}}
+</style></head><body data-template="tomas">
+<div class="editor-toolbar no-print">
+  <div><strong>Plantilla editable</strong><span>Haz clic sobre los textos subrayados para modificarlos.</span></div>
+  <div class="toolbar-actions"><button data-action="reset" type="button">Restaurar</button><button class="primary" data-action="print" type="button">Imprimir / Guardar PDF</button></div>
+</div>
+<main class="sheet">
+<header class="topbar"><div><div class="brand">MIIDO<small>ARCHITECTURE / CONSULTING</small></div></div><div class="doc-title"><h1><span class="editable" contenteditable="true" data-key="doc_type">RECIBO</span></h1><div class="code">DOC-ID: <span class="editable" contenteditable="true" data-key="number">[COMPLETAR]</span></div></div></header>
+<section class="info"><div class="box wide"><div class="k">Contratante</div><div class="v">MIIDO HONDURAS S.A. · RTN 08019026309744</div></div><div class="box"><div class="k">Emisión</div><div class="v"><span class="editable" contenteditable="true" data-key="date">31 / 05 / 2026</span></div></div><div class="box"><div class="k">Pago</div><div class="v"><span class="editable" contenteditable="true" data-key="payment">Transferencia bancaria</span></div></div><div class="box wide"><div class="k">Consultor</div><div class="v"><span class="editable" contenteditable="true" data-key="name">Tomás Ivano Amador Rozzi</span></div></div><div class="box"><div class="k">Identificación</div><div class="v"><span class="editable" contenteditable="true" data-key="id">[COMPLETAR IDENTIFICACIÓN]</span></div></div><div class="box"><div class="k">Programa</div><div class="v">INNOVATECH 2.0</div></div><div class="box wide"><div class="k">Periodo</div><div class="v"><span class="editable" contenteditable="true" data-key="period">Del 01 de abril de 2026 al 31 de mayo de 2026</span></div></div><div class="box wide"><div class="k">Rol</div><div class="v"><span class="editable" contenteditable="true" data-key="role">Facilitador técnico - Arquitectura y adaptación</span></div></div></section>
+<div class="section-head">01 / ENTREGABLES FACTURADOS</div>
+<div class="item"><div class="idx">P1</div><div class="desc"><h3>ARQUITECTURA DE REFERENCIA</h3><p><span class="editable" contenteditable="true" data-key="p1">Informe y paquete de arquitectura funcional y técnica de referencia para organizaciones priorizadas: procesos, actores, módulos, datos, interfaces, roles, permisos, seguridad, trazabilidad, observabilidad y matriz de configuración.</span></p></div><div class="amt">USD<br><span class="amount editable" contenteditable="true" data-key="a1" data-line-amount>1,875.00</span></div></div>
+<div class="item"><div class="idx">P2</div><div class="desc"><h3>ADAPTACIÓN VALIDADA</h3><p><span class="editable" contenteditable="true" data-key="p2">Paquete final validado de adaptación de MIIDO: flujos, funciones, reglas de negocio, validaciones, alertas, manejo de errores, requisitos no funcionales, criterios de aceptación, backlog y transferencia a producto, datos, desarrollo y operación.</span></p></div><div class="amt">USD<br><span class="amount editable" contenteditable="true" data-key="a2" data-line-amount>1,875.00</span></div></div>
+<div class="bottom"><div class="notes">// El presente recibo agrupa los dos productos contractuales aprobados.<br>// Proyecto: MIIDO - Programa Innovatech Honduras.<br>// Contacto: <span class="editable" contenteditable="true" data-key="contact">tomas.amador.rozzi@gmail.com · +56 9 4218 8966</span></div><div class="totalbox"><div class="tr"><span>SUBTOTAL</span><b>USD <span data-subtotal>3,750.00</span></b></div><div class="tr"><span>RETENCIONES</span><b>USD <span class="amount editable" contenteditable="true" data-key="retention" data-retention>0.00</span></b></div><div class="tr total"><span>TOTAL</span><span>USD <span data-total>3,750.00</span></span></div></div></div>
+<footer class="signature"><div class="sig"><span class="editable" contenteditable="true" data-key="sig">Tomás Ivano Amador Rozzi</span><br><strong>Consultor</strong></div><div class="stamp">MIIDO / INNOVATECH<br>DOCUMENTO EDITABLE · A4</div></footer>
+</main>
+<script>
+(function(){
+  const root = document.documentElement;
+  const storageKey = 'miido-invoice-' + (document.body.dataset.template || location.pathname);
+
+  function parseMoney(text){
+    const clean = String(text).replace(/[^0-9.,-]/g,'').replace(/,/g,'');
+    const n = Number(clean);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function fmt(n){
+    return new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+  }
+  function recalc(){
+    let subtotal = 0;
+    document.querySelectorAll('[data-line-amount]').forEach(el => subtotal += parseMoney(el.textContent));
+    const retentionEl = document.querySelector('[data-retention]');
+    const retention = retentionEl ? parseMoney(retentionEl.textContent) : 0;
+    document.querySelectorAll('[data-subtotal]').forEach(el => el.textContent = fmt(subtotal));
+    document.querySelectorAll('[data-total]').forEach(el => el.textContent = fmt(Math.max(0, subtotal - retention)));
+  }
+  function save(){
+    const state = {};
+    document.querySelectorAll('[contenteditable="true"]').forEach((el,i)=>state[el.dataset.key || ('e'+i)] = el.innerHTML);
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  }
+  function load(){
+    try{
+      const state = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      document.querySelectorAll('[contenteditable="true"]').forEach((el,i)=>{
+        const k = el.dataset.key || ('e'+i);
+        if(state[k] !== undefined) el.innerHTML = state[k];
+      });
+    }catch(e){}
+    recalc();
+  }
+  document.querySelectorAll('[contenteditable="true"]').forEach(el=>{
+    el.setAttribute('spellcheck','false');
+    el.addEventListener('input',()=>{ recalc(); save(); });
+    el.addEventListener('blur',()=>{
+      if(el.hasAttribute('data-line-amount') || el.hasAttribute('data-retention')) el.textContent = fmt(parseMoney(el.textContent));
+      recalc(); save();
+    });
+  });
+  document.querySelector('[data-action="print"]')?.addEventListener('click',()=>window.print());
+  document.querySelector('[data-action="reset"]')?.addEventListener('click',()=>{
+    if(confirm('¿Restaurar los datos originales de esta plantilla?')){ localStorage.removeItem(storageKey); location.reload(); }
+  });
+  load();
+})();
+</script>
+</body></html>

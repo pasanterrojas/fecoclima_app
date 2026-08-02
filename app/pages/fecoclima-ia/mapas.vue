@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
   CalendarDays,
-  CheckCircle2,
+  CheckCircle2, Clock3,
   Cloud,
   Droplets,
   History,
@@ -93,6 +93,21 @@ const currentImageUrl = computed(() => selectedVisual.value?.url || null)
 const interpretationClass = computed(() => {
   const level = context.value?.interpretation.level
   return level === 'ATTENTION' ? 'attention' : level === 'LIMITED' || level === 'NO_DATA' ? 'limited' : 'watch'
+})
+const sourceModeLabel = computed(() => {
+  const mode = context.value?.observation?.data_source_mode
+  if (mode === 'RECENT_VALID_FALLBACK') return 'Escena válida anterior'
+  if (mode === 'LAST_VALID_CACHE') return 'Último NDVI válido guardado'
+  return 'Escena válida más reciente'
+})
+const validCoverageLabel = computed(() => {
+  const value = context.value?.observation?.quality?.valid_coverage_percentage
+  return value == null ? '—' : `${Number(value).toFixed(1)}% de cobertura válida`
+})
+const latestCatalogDiffers = computed(() => {
+  const latest = context.value?.observation?.latest_catalog_scene_at
+  const shown = context.value?.observation?.captured_at
+  return Boolean(latest && shown && latest.slice(0, 10) !== shown.slice(0, 10))
 })
 
 function resolveImageUrl(source?: string | null): string | null {
@@ -201,7 +216,7 @@ async function processScene(scene?: SatelliteMapScene | null) {
         scene_id: target.scene_id,
         captured_date: target.captured_at.slice(0, 10),
         history_days: historyDays.value,
-        force: true,
+        force: false,
       },
     })
     context.value = result.context
@@ -217,11 +232,29 @@ async function processScene(scene?: SatelliteMapScene | null) {
 }
 
 async function refreshLatest() {
-  if (!context.value?.catalog_scenes.length) {
-    await loadContext()
-    return
+  if (!selection.stationId || !selection.cropCode) return
+  processing.value = true
+  processError.value = ''
+  try {
+    const result = await request<{ context: SatelliteMapContext }>('/public/satellite-map/process', {
+      method: 'POST',
+      body: {
+        station_id: selection.stationId,
+        crop_code: selection.cropCode,
+        history_days: historyDays.value,
+        force: false,
+      },
+    })
+    context.value = result.context
+    const availableLayers = visualLayers.value.filter(item => item.url).map(item => item.key)
+    selectedVisualLayer.value = availableLayers.includes(selectedVisualLayer.value) ? selectedVisualLayer.value : (availableLayers[0] || 'true_color')
+    selectedScene.value = context.value.catalog_scenes.find(item => item.scene_id === context.value?.observation?.scene_id) || null
+    agentResult.value = null
+  } catch (exception: any) {
+    processError.value = exception?.data?.detail || exception?.message || 'No fue posible seleccionar una escena válida reciente.'
+  } finally {
+    processing.value = false
   }
-  await processScene(context.value.catalog_scenes[0])
 }
 
 async function generateAgentExplanation() {
@@ -304,6 +337,7 @@ onMounted(async () => {
 
       <template v-else-if="context">
         <p v-if="context.geometry_source !== 'POLYGON'" class="notice notice-warning geometry-warning">La estación está usando un área circular aproximada. Para que la imagen represente el terreno real, dibuje y guarde el polígono en <NuxtLink to="/admin/estaciones">Administración → Estaciones</NuxtLink>.</p>
+        <p v-if="context.observation?.data_warning" class="notice notice-warning freshness-warning">{{ context.observation.data_warning }}</p>
         <section class="history-card card">
           <div class="card-body">
             <div class="section-head">
@@ -350,6 +384,8 @@ onMounted(async () => {
               <div v-if="context.observation" class="scene-summary">
                 <span><Cloud /> {{ context.observation.cloud_percentage == null ? 'Nubes —' : `${formatNumber(context.observation.cloud_percentage, 0)}% nubes` }}</span>
                 <span><Image /> {{ context.observation.resolution_m || 10 }} m/píxel</span>
+                <span><CheckCircle2 /> {{ validCoverageLabel }}</span>
+                <span v-if="context.observation.data_age_days != null"><Clock3 /> {{ Number(context.observation.data_age_days).toFixed(1) }} días</span>
                 <span class="badge" :class="context.observation.analysis?.reliability === 'alta' ? 'badge-success' : 'badge-warning'">{{ context.observation.analysis?.reliability || 'sin evaluar' }}</span>
               </div>
             </div>
@@ -368,7 +404,11 @@ onMounted(async () => {
             </div>
             <div v-if="context.observation" class="layer-status">
               <Layers3 />
-              <span>Mostrando <b>{{ selectedVisual?.label }}</b> de la escena {{ formatDate(context.observation.captured_at) }}. {{ context.observation.visual_layers_available || 0 }} de 9 mapas de índices disponibles.</span>
+              <span>Mostrando <b>{{ selectedVisual?.label }}</b> de la escena válida {{ formatDate(context.observation.captured_at) }}. {{ context.observation.visual_layers_available || 0 }} de 9 mapas disponibles. Fuente: {{ sourceModeLabel }}.</span>
+            </div>
+            <div v-if="context.observation && latestCatalogDiffers" class="latest-scene-note">
+              <TriangleAlert />
+              <span>La adquisición más reciente del catálogo es del {{ formatDate(context.observation.latest_catalog_scene_at) }}, pero no alcanzó la calidad mínima dentro del polígono.</span>
             </div>
             <SatelliteAnalysisMap
               :geometry="context.geometry"
@@ -432,7 +472,8 @@ onMounted(async () => {
                 <div><span>Promedio</span><b>{{ formatNumber(selectedStats.mean, 3) }}</b></div>
                 <div><span>Máximo</span><b>{{ formatNumber(selectedStats.max, 3) }}</b></div>
                 <div><span>Desviación</span><b>{{ formatNumber(selectedStats.stdev, 3) }}</b></div>
-                <div><span>Píxeles válidos</span><b>{{ selectedStats.sample_count ?? '—' }}</b></div>
+                <div><span>Píxeles válidos</span><b>{{ selectedStats.valid_pixel_count ?? selectedStats.sample_count ?? '—' }}</b></div>
+                <div><span>Cobertura válida</span><b>{{ selectedStats.valid_coverage_percentage == null ? '—' : `${formatNumber(selectedStats.valid_coverage_percentage, 1)}%` }}</b></div>
                 <div><span>Sin dato</span><b>{{ selectedStats.no_data_count ?? '—' }}</b></div>
               </div>
             </div>
@@ -444,5 +485,5 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.satellite-page{padding-bottom:45px}.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.page-head .btn svg,.interpretation-head .btn svg,.process-scene .btn svg{width:18px}.control-card,.history-card,.map-card,.interpretation-card,.indices-card{margin-top:20px}.geometry-warning{margin-top:20px}.geometry-warning a{font-weight:800;color:inherit;text-decoration:underline}.controls{display:grid;grid-template-columns:1.1fr 1fr .8fr 1fr;gap:14px;align-items:end}.geometry-badge{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 11px;border-radius:10px;background:#edf7fb;color:var(--fc-primary)}.geometry-badge>svg{width:22px}.geometry-badge div{display:flex;flex-direction:column}.geometry-badge span{font-size:.76rem;color:var(--fc-text-muted)}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.section-head h2{margin:3px 0 5px;color:var(--fc-primary)}.section-head p{margin:0;color:var(--fc-text-muted)}.section-head .badge{display:inline-flex;align-items:center;gap:6px}.section-head .badge svg{width:16px}.scene-strip{display:flex;gap:10px;margin-top:17px;padding-bottom:5px;overflow-x:auto}.scene-item{flex:0 0 175px;display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:12px;border:1px solid var(--fc-border);border-radius:12px;background:#fff;color:var(--fc-text);text-align:left}.scene-item:hover{border-color:#8cbad0}.scene-item.active{border-color:var(--fc-primary);box-shadow:0 0 0 2px rgba(0,113,172,.15)}.scene-item.processed{background:#f2faf5}.scene-item b{color:var(--fc-primary)}.scene-item small,.scene-date{display:flex;align-items:center;gap:5px}.scene-item svg{width:14px}.scene-date{font-size:.78rem;font-weight:800}.process-scene{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:15px;padding:14px;border-radius:12px;background:#fff7df;border:1px solid #f2d37b}.process-scene>div{display:flex;flex-direction:column;gap:3px}.process-scene span{color:var(--fc-text-muted)}.empty-scenes{display:flex;align-items:center;gap:12px;margin-top:17px;padding:18px;border:1px dashed var(--fc-border);border-radius:12px}.empty-scenes>svg{width:34px;color:var(--fc-primary)}.empty-scenes p{margin:4px 0 0;color:var(--fc-text-muted)}.map-heading{margin-bottom:13px}.visual-layer-strip{display:flex;gap:8px;margin:0 0 10px;padding-bottom:5px;overflow-x:auto}.visual-layer-strip button{flex:0 0 auto;min-width:128px;padding:9px 11px;border:1px solid var(--fc-border);border-radius:10px;background:#fff;text-align:left;color:var(--fc-text)}.visual-layer-strip button span,.visual-layer-strip button small{display:block}.visual-layer-strip button span{font-weight:900;color:var(--fc-primary)}.visual-layer-strip button small{margin-top:2px;color:var(--fc-text-muted);font-size:.7rem}.visual-layer-strip button.active{border-color:var(--fc-primary);box-shadow:0 0 0 2px rgba(0,113,172,.13);background:#edf8fd}.visual-layer-strip button.unavailable{opacity:.48}.layer-status{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:9px 11px;border-radius:9px;background:var(--fc-surface-muted);color:var(--fc-text-muted);font-size:.8rem}.layer-status svg{width:17px;color:var(--fc-primary)}.scene-summary{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.scene-summary>span:not(.badge){display:inline-flex;align-items:center;gap:5px;color:var(--fc-text-muted);font-size:.8rem}.scene-summary svg{width:15px}.interpretation-card{border-left:5px solid #4d9b72}.interpretation-card.is-attention{border-left-color:#e5a323}.interpretation-card.is-limited{border-left-color:#8799a5}.interpretation-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:flex-start}.interpretation-icon{display:grid;place-items:center;width:45px;height:45px;border-radius:50%;background:#edf8f2;color:#357a56}.is-attention .interpretation-icon{background:#fff4d8;color:#a66b00}.is-limited .interpretation-icon{background:#eef1f3;color:#667680}.interpretation-icon svg{width:23px}.interpretation-head h2{margin:3px 0 6px;color:var(--fc-primary)}.interpretation-head p{margin:0;line-height:1.6}.interpretation-grid{display:grid;grid-template-columns:1.1fr 1fr .9fr;gap:12px;margin-top:17px}.interpretation-grid>div{padding:14px;border-radius:12px;background:var(--fc-surface-muted)}.interpretation-grid h3{margin:0 0 8px;color:var(--fc-primary);font-size:.95rem}.interpretation-grid ol,.interpretation-grid ul{margin:0;padding-left:20px}.interpretation-grid li{margin:6px 0;line-height:1.45}.weather-box p{display:flex;align-items:center;gap:7px;margin:7px 0}.weather-box svg{width:17px;color:var(--fc-primary)}.agent-result{margin-top:16px;padding:17px;border:1px solid #b8d9e8;border-radius:13px;background:#f6fbfd}.single-limit{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--fc-border);color:var(--fc-text-muted);font-size:.8rem}.index-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:17px}.index-grid article{padding:14px;border:1px solid var(--fc-border);border-radius:12px;background:#fff}.index-grid article.unavailable{opacity:.55;background:#f5f6f7}.index-grid article{cursor:pointer}.index-grid article.active{border-color:var(--fc-primary);box-shadow:0 0 0 2px rgba(0,113,172,.12)}.index-grid article>div{display:flex;flex-direction:column}.index-grid article>div b{color:var(--fc-primary)}.index-grid article>div span{font-size:.75rem;color:var(--fc-text-muted)}.index-grid strong{display:block;margin:10px 0 6px;font-size:1.5rem;color:#245f45}.index-grid p{margin:0;color:var(--fc-text-muted);font-size:.78rem;line-height:1.4}.map-availability{display:block;margin-top:9px;font-size:.7rem;font-weight:800;color:var(--fc-primary)}.statistics{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:end;margin-top:18px;padding-top:18px;border-top:1px solid var(--fc-border)}.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.stats-grid>div{display:flex;flex-direction:column;padding:10px;border-radius:9px;background:var(--fc-surface-muted)}.stats-grid span{font-size:.7rem;color:var(--fc-text-muted)}.stats-grid b{color:var(--fc-primary)}.spinning{animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:1050px){.controls{grid-template-columns:1fr 1fr}.interpretation-grid{grid-template-columns:1fr 1fr}.weather-box{grid-column:1/-1}.index-grid{grid-template-columns:repeat(2,1fr)}.statistics{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:760px){.page-head,.section-head,.process-scene{flex-direction:column}.page-head .btn,.process-scene .btn{width:100%}.controls{grid-template-columns:1fr}.interpretation-head{grid-template-columns:auto 1fr}.interpretation-head .btn{grid-column:1/-1;width:100%}.interpretation-grid{grid-template-columns:1fr}.weather-box{grid-column:auto}.index-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}
+.satellite-page{padding-bottom:45px}.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.page-head .btn svg,.interpretation-head .btn svg,.process-scene .btn svg{width:18px}.control-card,.history-card,.map-card,.interpretation-card,.indices-card{margin-top:20px}.geometry-warning,.freshness-warning{margin-top:20px}.geometry-warning a{font-weight:800;color:inherit;text-decoration:underline}.controls{display:grid;grid-template-columns:1.1fr 1fr .8fr 1fr;gap:14px;align-items:end}.geometry-badge{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 11px;border-radius:10px;background:#edf7fb;color:var(--fc-primary)}.geometry-badge>svg{width:22px}.geometry-badge div{display:flex;flex-direction:column}.geometry-badge span{font-size:.76rem;color:var(--fc-text-muted)}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.section-head h2{margin:3px 0 5px;color:var(--fc-primary)}.section-head p{margin:0;color:var(--fc-text-muted)}.section-head .badge{display:inline-flex;align-items:center;gap:6px}.section-head .badge svg{width:16px}.scene-strip{display:flex;gap:10px;margin-top:17px;padding-bottom:5px;overflow-x:auto}.scene-item{flex:0 0 175px;display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:12px;border:1px solid var(--fc-border);border-radius:12px;background:#fff;color:var(--fc-text);text-align:left}.scene-item:hover{border-color:#8cbad0}.scene-item.active{border-color:var(--fc-primary);box-shadow:0 0 0 2px rgba(0,113,172,.15)}.scene-item.processed{background:#f2faf5}.scene-item b{color:var(--fc-primary)}.scene-item small,.scene-date{display:flex;align-items:center;gap:5px}.scene-item svg{width:14px}.scene-date{font-size:.78rem;font-weight:800}.process-scene{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:15px;padding:14px;border-radius:12px;background:#fff7df;border:1px solid #f2d37b}.process-scene>div{display:flex;flex-direction:column;gap:3px}.process-scene span{color:var(--fc-text-muted)}.empty-scenes{display:flex;align-items:center;gap:12px;margin-top:17px;padding:18px;border:1px dashed var(--fc-border);border-radius:12px}.empty-scenes>svg{width:34px;color:var(--fc-primary)}.empty-scenes p{margin:4px 0 0;color:var(--fc-text-muted)}.map-heading{margin-bottom:13px}.visual-layer-strip{display:flex;gap:8px;margin:0 0 10px;padding-bottom:5px;overflow-x:auto}.visual-layer-strip button{flex:0 0 auto;min-width:128px;padding:9px 11px;border:1px solid var(--fc-border);border-radius:10px;background:#fff;text-align:left;color:var(--fc-text)}.visual-layer-strip button span,.visual-layer-strip button small{display:block}.visual-layer-strip button span{font-weight:900;color:var(--fc-primary)}.visual-layer-strip button small{margin-top:2px;color:var(--fc-text-muted);font-size:.7rem}.visual-layer-strip button.active{border-color:var(--fc-primary);box-shadow:0 0 0 2px rgba(0,113,172,.13);background:#edf8fd}.visual-layer-strip button.unavailable{opacity:.48}.layer-status{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:9px 11px;border-radius:9px;background:var(--fc-surface-muted);color:var(--fc-text-muted);font-size:.8rem}.layer-status svg{width:17px;color:var(--fc-primary)}.latest-scene-note{display:flex;align-items:flex-start;gap:8px;margin:0 0 12px;padding:10px 12px;border-radius:9px;background:#fff7df;color:#7b5a00;font-size:.8rem}.latest-scene-note svg{flex:0 0 17px;width:17px}.scene-summary{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.scene-summary>span:not(.badge){display:inline-flex;align-items:center;gap:5px;color:var(--fc-text-muted);font-size:.8rem}.scene-summary svg{width:15px}.interpretation-card{border-left:5px solid #4d9b72}.interpretation-card.is-attention{border-left-color:#e5a323}.interpretation-card.is-limited{border-left-color:#8799a5}.interpretation-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:flex-start}.interpretation-icon{display:grid;place-items:center;width:45px;height:45px;border-radius:50%;background:#edf8f2;color:#357a56}.is-attention .interpretation-icon{background:#fff4d8;color:#a66b00}.is-limited .interpretation-icon{background:#eef1f3;color:#667680}.interpretation-icon svg{width:23px}.interpretation-head h2{margin:3px 0 6px;color:var(--fc-primary)}.interpretation-head p{margin:0;line-height:1.6}.interpretation-grid{display:grid;grid-template-columns:1.1fr 1fr .9fr;gap:12px;margin-top:17px}.interpretation-grid>div{padding:14px;border-radius:12px;background:var(--fc-surface-muted)}.interpretation-grid h3{margin:0 0 8px;color:var(--fc-primary);font-size:.95rem}.interpretation-grid ol,.interpretation-grid ul{margin:0;padding-left:20px}.interpretation-grid li{margin:6px 0;line-height:1.45}.weather-box p{display:flex;align-items:center;gap:7px;margin:7px 0}.weather-box svg{width:17px;color:var(--fc-primary)}.agent-result{margin-top:16px;padding:17px;border:1px solid #b8d9e8;border-radius:13px;background:#f6fbfd}.single-limit{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--fc-border);color:var(--fc-text-muted);font-size:.8rem}.index-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:17px}.index-grid article{padding:14px;border:1px solid var(--fc-border);border-radius:12px;background:#fff}.index-grid article.unavailable{opacity:.55;background:#f5f6f7}.index-grid article{cursor:pointer}.index-grid article.active{border-color:var(--fc-primary);box-shadow:0 0 0 2px rgba(0,113,172,.12)}.index-grid article>div{display:flex;flex-direction:column}.index-grid article>div b{color:var(--fc-primary)}.index-grid article>div span{font-size:.75rem;color:var(--fc-text-muted)}.index-grid strong{display:block;margin:10px 0 6px;font-size:1.5rem;color:#245f45}.index-grid p{margin:0;color:var(--fc-text-muted);font-size:.78rem;line-height:1.4}.map-availability{display:block;margin-top:9px;font-size:.7rem;font-weight:800;color:var(--fc-primary)}.statistics{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:end;margin-top:18px;padding-top:18px;border-top:1px solid var(--fc-border)}.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.stats-grid>div{display:flex;flex-direction:column;padding:10px;border-radius:9px;background:var(--fc-surface-muted)}.stats-grid span{font-size:.7rem;color:var(--fc-text-muted)}.stats-grid b{color:var(--fc-primary)}.spinning{animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:1050px){.controls{grid-template-columns:1fr 1fr}.interpretation-grid{grid-template-columns:1fr 1fr}.weather-box{grid-column:1/-1}.index-grid{grid-template-columns:repeat(2,1fr)}.statistics{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:760px){.page-head,.section-head,.process-scene{flex-direction:column}.page-head .btn,.process-scene .btn{width:100%}.controls{grid-template-columns:1fr}.interpretation-head{grid-template-columns:auto 1fr}.interpretation-head .btn{grid-column:1/-1;width:100%}.interpretation-grid{grid-template-columns:1fr}.weather-box{grid-column:auto}.index-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}
 </style>

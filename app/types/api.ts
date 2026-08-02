@@ -177,8 +177,30 @@ export interface SatelliteObservation {
     stdev?: number | null
     sample_count?: number | null
     no_data_count?: number | null
+    valid_pixel_count?: number | null
+    valid_coverage_percentage?: number | null
     percentiles?: Record<string, number>
   }>
+  quality?: {
+    status?: string
+    interval_count?: number
+    total_pixels?: number
+    valid_pixels?: number
+    no_data_pixels?: number
+    valid_coverage_percentage?: number
+    quality_band?: 'PREFERRED' | 'ACCEPTABLE' | 'REJECTED' | string
+  }
+  statistics_time_range?: { from?: string; to?: string }
+  data_source_mode?: 'LATEST_VALID_SCENE' | 'RECENT_VALID_FALLBACK' | 'LAST_VALID_CACHE' | string
+  fallback_used?: boolean
+  data_warning?: string | null
+  data_age_days?: number
+  data_is_stale?: boolean
+  max_stale_days?: number
+  latest_catalog_scene_at?: string | null
+  catalog_checked_at?: string | null
+  selected_scene_rank?: number | null
+  candidate_checks?: Array<Record<string, any>>
   scene_metadata?: Record<string, any>
   previous_comparison?: { ndvi_delta?: number; ndmi_delta?: number; ndwi_delta?: number }
   plot_id?: string | null
@@ -253,12 +275,17 @@ export interface SatelliteMapContext {
   interpretation: SatelliteMapInterpretation
   runtime_config: {
     max_cloud_percentage: number
+    provider_tile_cloud_ceiling_percentage: number
     lookback_days: number
     history_days: number
     history_limit: number
     refresh_hours: number
     catalog_limit: number
+    scene_quality_candidates: number
     minimum_valid_pixels: number
+    minimum_valid_coverage_percentage: number
+    preferred_valid_coverage_percentage: number
+    max_stale_days: number
     default_map_opacity: number
   }
   context_date?: string | null
