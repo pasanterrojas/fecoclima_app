@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   app: {
     // La aplicación conserva sus rutas reales:
     // /fecoclima-ia
-    // /admin
+    // /fecoclima-ia/admin
     // etc.
     baseURL: '/',
 
@@ -57,7 +57,11 @@ export default defineNuxtConfig({
 
       appName:
         process.env.NUXT_PUBLIC_APP_NAME ||
-        'FECOCLIMA IA'
+        'FECOCLIMA IA',
+
+      csrfCookieName:
+        process.env.NUXT_PUBLIC_CSRF_COOKIE_NAME ||
+        'csrf_token'
     }
   },
 

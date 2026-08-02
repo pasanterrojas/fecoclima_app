@@ -262,14 +262,14 @@ onMounted(async () => {
 
         <section class="section-block">
           <h2 class="section-title">Riesgo potencial según el pronóstico</h2>
-          <p class="section-help">La clasificación usa los mismos niveles configurados en la versión publicada de /admin/reglas. Es una proyección, no una alerta observada.</p>
+          <p class="section-help">La clasificación usa los mismos niveles configurados en la versión publicada de /fecoclima-ia/admin/reglas. Es una proyección, no una alerta observada.</p>
           <div v-if="dashboard.forecast_risk?.days?.length" class="card forecast-risk-table"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Etapa estimada</th><th>Condiciones favorables</th><th>Cobertura</th><th>Nivel potencial</th></tr></thead><tbody><tr v-for="day in dashboard.forecast_risk.days" :key="day.date"><td>{{ new Date(`${day.date}T12:00:00`).toLocaleDateString('es-PY', { weekday: 'short', day: '2-digit', month: 'short' }) }}</td><td>{{ day.stage_code || '—' }} · {{ day.stage_name || 'Sin calendario' }}</td><td>{{ day.conditions_met }} de {{ day.conditions_total }}</td><td>{{ day.coverage_pct }}%</td><td><span class="badge" :class="alertBadgeClass(day.potential_color, day.potential_level)">{{ day.potential_label || day.potential_level }}</span></td></tr></tbody></table></div></div>
           <div v-else class="card"><EmptyState title="Sin pronóstico evaluable" :message="dashboard.forecast_risk?.methodology || 'No hay pronóstico o reglas publicadas para este cultivo.'" /></div>
         </section>
 
         <section class="section-block">
           <h2 class="section-title">Enfermedades con condiciones pronosticadas completas</h2>
-          <p class="section-help">Cada enfermedad se valida con sus parámetros publicados en /admin/reglas. No constituye diagnóstico.</p>
+          <p class="section-help">Cada enfermedad se valida con sus parámetros publicados en /fecoclima-ia/admin/reglas. No constituye diagnóstico.</p>
           <div v-if="dashboard.forecast_risk?.diseases?.length" class="grid grid-3"><ForecastDiseaseCard v-for="disease in dashboard.forecast_risk.diseases" :key="disease.name" :disease="disease" /></div>
           <div v-else class="card"><EmptyState title="Sin coincidencias completas" :message="dashboard.forecast_risk?.methodology || 'No hay reglas completamente evaluables con las variables del pronóstico.'" /></div>
           <div v-if="dashboard.forecast_risk?.unresolved_diseases?.length" class="notice forecast-limitations"><b>Reglas no proyectadas por falta de variables:</b><span v-for="item in dashboard.forecast_risk.unresolved_diseases" :key="item.name">{{ item.name }} ({{ item.missing_variables.join(', ') }})</span></div>

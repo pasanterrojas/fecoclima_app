@@ -3,19 +3,19 @@ import { BellRing, Bot, ClipboardList, CloudDownload, CloudSun, FileText, Gauge,
 defineProps<{ open:boolean }>()
 defineEmits<{ close:[] }>()
 const links=[
- {to:'/admin',label:'Dashboard',icon:LayoutDashboard},
- {to:'/admin/usuarios',label:'Usuarios',icon:Users},
- {to:'/admin/estaciones',label:'Estaciones',icon:CloudSun},
- {to:'/admin/importaciones',label:'Datos y sincronización',icon:CloudDownload},
- {to:'/admin/parcelas',label:'Parcelas',icon:MapPinned},
- {to:'/admin/cultivos',label:'Cultivos',icon:Sprout},
- {to:'/admin/reglas',label:'Reglas',icon:ClipboardList},
- {to:'/admin/agentes',label:'Agentes IA',icon:Bot},
- {to:'/admin/notificaciones',label:'Avisos a productores',icon:BellRing},
- {to:'/admin/integraciones',label:'Integraciones',icon:Gauge},
- {to:'/admin/reportes',label:'Reportes',icon:FileText},
- {to:'/admin/auditoria',label:'Auditoría',icon:History},
- {to:'/admin/configuracion',label:'Configuración',icon:Settings}
+ {to:'/fecoclima-ia/admin',label:'Dashboard',icon:LayoutDashboard},
+ {to:'/fecoclima-ia/admin/usuarios',label:'Usuarios',icon:Users},
+ {to:'/fecoclima-ia/admin/estaciones',label:'Estaciones',icon:CloudSun},
+ {to:'/fecoclima-ia/admin/importaciones',label:'Datos y sincronización',icon:CloudDownload},
+ {to:'/fecoclima-ia/admin/parcelas',label:'Parcelas',icon:MapPinned},
+ {to:'/fecoclima-ia/admin/cultivos',label:'Cultivos',icon:Sprout},
+ {to:'/fecoclima-ia/admin/reglas',label:'Reglas',icon:ClipboardList},
+ {to:'/fecoclima-ia/admin/agentes',label:'Agentes IA',icon:Bot},
+ {to:'/fecoclima-ia/admin/notificaciones',label:'Avisos a productores',icon:BellRing},
+ {to:'/fecoclima-ia/admin/integraciones',label:'Integraciones',icon:Gauge},
+ {to:'/fecoclima-ia/admin/reportes',label:'Reportes',icon:FileText},
+ {to:'/fecoclima-ia/admin/auditoria',label:'Auditoría',icon:History},
+ {to:'/fecoclima-ia/admin/configuracion',label:'Configuración',icon:Settings}
 ]
 </script>
 <template><aside class="sidebar" :class="{open}"><div class="side-brand"><NuxtLink to="/fecoclima-ia"><ShieldCheck/> FECOCLIMA IA</NuxtLink><button @click="$emit('close')"><X/></button></div><nav><NuxtLink v-for="item in links" :key="item.to" :to="item.to" @click="$emit('close')"><component :is="item.icon"/><span>{{item.label}}</span></NuxtLink></nav></aside></template>

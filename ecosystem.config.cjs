@@ -9,8 +9,8 @@ module.exports = {
     max_memory_restart: '700M',
     env: {
       NODE_ENV: 'production',
-      PORT: process.env.PORT || 3017,
-      HOST: '0.0.0.0'
+      PORT: process.env.PORT || process.env.NITRO_PORT || 3037,
+      HOST: process.env.HOST || process.env.NITRO_HOST || '127.0.0.1'
     }
   }]
 }

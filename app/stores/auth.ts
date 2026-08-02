@@ -18,7 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout() {
     await request('/auth/logout', { method: 'POST' })
     user.value = null
-    await navigateTo('/admin/login')
+    await navigateTo('/fecoclima-ia/admin/login')
   }
   return { user, loading, load, login, logout }
 })

@@ -336,7 +336,7 @@ onMounted(async () => {
       <LoadingState v-else-if="loading" />
 
       <template v-else-if="context">
-        <p v-if="context.geometry_source !== 'POLYGON'" class="notice notice-warning geometry-warning">La estación está usando un área circular aproximada. Para que la imagen represente el terreno real, dibuje y guarde el polígono en <NuxtLink to="/admin/estaciones">Administración → Estaciones</NuxtLink>.</p>
+        <p v-if="context.geometry_source !== 'POLYGON'" class="notice notice-warning geometry-warning">La estación está usando un área circular aproximada. Para que la imagen represente el terreno real, dibuje y guarde el polígono en <NuxtLink to="/fecoclima-ia/admin/estaciones">Administración → Estaciones</NuxtLink>.</p>
         <p v-if="context.observation?.data_warning" class="notice notice-warning freshness-warning">{{ context.observation.data_warning }}</p>
         <section class="history-card card">
           <div class="card-body">

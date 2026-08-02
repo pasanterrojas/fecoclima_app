@@ -1,6 +1,6 @@
 export function useApi() {
   const config = useRuntimeConfig()
-  const csrf = useCookie<string | null>('csrf_token')
+  const csrf = useCookie<string | null>(config.public.csrfCookieName)
 
   async function request<T>(path: string, options: Parameters<typeof $fetch<T>>[1] = {}): Promise<T> {
     const headers = new Headers(options.headers as HeadersInit | undefined)

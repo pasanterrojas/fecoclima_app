@@ -274,8 +274,8 @@ onMounted(load)
     </AdminPageHeader>
 
     <div class="role-grid">
-      <NuxtLink class="role-card" to="/admin/agentes"><Bot /><div><b>Agente del boletín</b><span>Configure el propósito “Boletín automático de 72 horas” por cultivo.</span></div></NuxtLink>
-      <NuxtLink class="role-card" to="/admin/conocimiento"><FileText /><div><b>Fuentes documentales</b><span>Los PDF indexados por cultivo también respaldan el boletín.</span></div></NuxtLink>
+      <NuxtLink class="role-card" to="/fecoclima-ia/admin/agentes"><Bot /><div><b>Agente del boletín</b><span>Configure el propósito “Boletín automático de 72 horas” por cultivo.</span></div></NuxtLink>
+      <NuxtLink class="role-card" to="/fecoclima-ia/admin/conocimiento"><FileText /><div><b>Fuentes documentales</b><span>Los PDF indexados por cultivo también respaldan el boletín.</span></div></NuxtLink>
     </div>
 
     <div v-if="message" class="notice success-message"><CheckCircle2 /> {{ message }}</div>
