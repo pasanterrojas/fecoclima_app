@@ -1,29 +1,82 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-07-01',
-  devtools: { enabled: false },
+
+  devtools: {
+    enabled: false
+  },
+
   modules: ['@pinia/nuxt'],
+
   css: ['~/assets/css/main.css'],
+
   app: {
+    // La aplicación conserva sus rutas reales:
+    // /fecoclima-ia
+    // /admin
+    // etc.
+    baseURL: '/',
+
+    // Evita que sus archivos JS y CSS choquen con los del
+    // Centro de Competencias, que también usa Nuxt.
+    buildAssetsDir: '/fecoclima-ia/_nuxt/',
+
     head: {
       titleTemplate: '%s · FECOCLIMA IA',
+
       meta: [
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'theme-color', content: '#004481' },
-        { name: 'description', content: 'Monitoreo agrometeorológico, fenología y alertas para productores de Paraguay.' }
+        {
+          name: 'viewport',
+          content: 'width=device-width, initial-scale=1'
+        },
+        {
+          name: 'theme-color',
+          content: '#004481'
+        },
+        {
+          name: 'description',
+          content:
+            'Monitoreo agrometeorológico, fenología y alertas para productores de Paraguay.'
+        }
       ],
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }]
+
+      link: [
+        {
+          rel: 'icon',
+          type: 'image/svg+xml',
+          href: '/favicon.svg'
+        }
+      ]
     }
   },
+
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000/api/v1',
-      appName: process.env.NUXT_PUBLIC_APP_NAME || 'FECOCLIMA IA'
+      apiBase:
+        process.env.NUXT_PUBLIC_API_BASE ||
+        'http://localhost:8000/api/v1',
+
+      appName:
+        process.env.NUXT_PUBLIC_APP_NAME ||
+        'FECOCLIMA IA'
     }
   },
-  nitro: { preset: 'node-server' },
-  typescript: { strict: true, typeCheck: false },
+
+  nitro: {
+    preset: 'node-server'
+  },
+
+  typescript: {
+    strict: true,
+    typeCheck: false
+  },
+
   routeRules: {
-    '/fecoclim-ai': { redirect: '/fecoclima-ia' },
-    '/': { redirect: '/fecoclima-ia' }
+    '/fecoclim-ai': {
+      redirect: '/fecoclima-ia'
+    },
+
+    '/': {
+      redirect: '/fecoclima-ia'
+    }
   }
 })
