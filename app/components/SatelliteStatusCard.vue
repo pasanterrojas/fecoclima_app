@@ -39,12 +39,26 @@ const indexDefinitions: Record<string, { label: string; meaning: string }> = {
 function resolveImageUrl(source?: string | null): string | null {
   if (!source) return null
   if (/^https?:\/\//i.test(source)) return source
-  try {
-    const api = new URL(String(config.public.apiBase))
-    return new URL(source, api.origin).toString()
-  } catch {
-    return source
+
+  const apiBase = String(config.public.apiBase || '/api/v1').replace(/\/+$/, '')
+  const normalizedSource = source.startsWith('/') ? source : `/${source}`
+
+  // El backend conserva sus rutas internas en /api/v1, mientras que en
+  // producción Caddy publica el API bajo /fecoclima-ia/api/v1. Reutilizar el
+  // prefijo público evita que las imágenes terminen solicitándose al backend
+  // de Centro de Competencias en /api/v1/... y respondan 404.
+  const internalApiPrefix = '/api/v1'
+  if (
+    normalizedSource === internalApiPrefix ||
+    normalizedSource.startsWith(`${internalApiPrefix}/`)
+  ) {
+    return `${apiBase}${normalizedSource.slice(internalApiPrefix.length)}`
   }
+
+  if (import.meta.client) {
+    return new URL(normalizedSource, window.location.origin).toString()
+  }
+  return normalizedSource
 }
 const visualLayers = computed(() => {
   const rows = [{ key: 'true_color', label: 'Color real', meaning: 'Sentinel-2 RGB', url: props.data?.image_available ? resolveImageUrl(props.data?.source_url) : null }]

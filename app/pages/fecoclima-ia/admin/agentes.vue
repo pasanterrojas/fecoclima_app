@@ -98,7 +98,13 @@ const fields = computed(() => [
   { key: 'response_show_technical_values', label: 'Mostrar cifras técnicas', type: 'checkbox', defaultValue: false, hint: 'Desactivado: el agente traduce las cifras a condiciones prácticas y conserva solo las decisivas.' },
   { key: 'response_show_system_details', label: 'Mostrar detalles internos del cálculo', type: 'checkbox', defaultValue: false, hint: 'Manténgalo desactivado para ocultar confianza, condiciones X de Y, motor, modelo y otros términos internos.' },
   { key: 'response_use_emojis', label: 'Usar emojis moderados', type: 'checkbox', defaultValue: true },
-  { key: 'response_custom_instructions', label: 'Instrucciones adicionales de comunicación', type: 'textarea', placeholder: 'Ejemplo: priorice acciones de campo y mencione solo el día más crítico del pronóstico.' },
+  {
+    key: 'response_custom_instructions',
+    label: 'Estructura y contenido del widget',
+    type: 'textarea',
+    placeholder: 'Ejemplo: incluya una sección titulada “Recomendación general” y allí explique el dato decisivo para el productor.',
+    hint: 'Estas instrucciones tienen prioridad para los títulos, el orden de secciones y el enfoque visible. No pueden cambiar el nivel determinístico ni inventar datos.'
+  },
   { key: 'model', label: 'Modelo de IA', type: 'select', required: true, options: modelOptions.value },
   { key: 'temperature', label: 'Temperatura', type: 'number', numericMode: 'decimal', step: 0.1, min: 0, max: 2, defaultValue: 0.2, placeholder: '0.2' },
   { key: 'max_tokens', label: 'Límite técnico de tokens', type: 'number', numericMode: 'integer', step: 1, min: 100, max: 20000, defaultValue: 1500, hint: 'La longitud visible se controla con “Máximo de palabras”. Este límite evita respuestas cortadas por el proveedor.' },

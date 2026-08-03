@@ -27,7 +27,7 @@ const markdown = computed(() => {
     <div class="card-body agent-body">
       <header class="agent-head">
         <div class="agent-avatar"><Bot /></div>
-        <div><div class="eyebrow"><Sparkles /> Recomendación para productores</div><h2>Qué está pasando y qué hacer hoy</h2><p>Una lectura breve del lote, el clima próximo y las acciones que conviene priorizar.</p></div>
+        <div><div class="eyebrow"><Sparkles /> Criterio del agente</div><h2>Recomendación para productores</h2><p>El contenido, los títulos y el orden de las secciones siguen la configuración del agente activo.</p></div>
         <button class="btn btn-light" :disabled="loading" @click="emit('refresh')"><RefreshCw /> Actualizar recomendación</button>
       </header>
       <div v-if="loading" class="agent-loading"><span class="ai-orb"/><div><b>Preparando una recomendación clara…</b><p>Estamos priorizando lo que necesita atención y las acciones de campo.</p></div></div>

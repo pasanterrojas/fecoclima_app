@@ -43,6 +43,8 @@ export interface DiseaseRisk {
 
 export interface AlertSummary {
   evaluation_id?: string | null
+  current_evaluation_id?: string | null
+  evaluation_date?: string | null
   rule_version_id?: string | null
   rule_version?: string | null
   level_label?: string

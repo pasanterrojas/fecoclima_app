@@ -9,6 +9,13 @@ const meta: Record<AlertLevel, { label: string; className: string }> = {
   GRAVE: { label: 'Alerta grave', className: 'severe' },
   DATOS_INSUFICIENTES: { label: 'Datos insuficientes', className: 'missing' }
 }
+const evaluationDateLabel = computed(() => {
+  if (!props.alert.evaluation_date) return ''
+  return new Date(`${props.alert.evaluation_date}T12:00:00`).toLocaleDateString('es-PY', {
+    day: '2-digit',
+    month: 'short',
+  })
+})
 const colorClass = computed(() => {
   const configured = String(props.alert.maximum_level_color || props.alert.level_color || '').toLowerCase()
   if (['red', 'rojo'].includes(configured)) return 'severe'
@@ -24,7 +31,7 @@ const colorClass = computed(() => {
     <div class="card-body">
       <div class="row-between">
         <div>
-          <div class="eyebrow">Peor nivel · últimas 72 horas</div>
+          <div class="eyebrow">Peor nivel · últimas 72 horas<span v-if="evaluationDateLabel"> · {{ evaluationDateLabel }}</span></div>
           <h3>{{ alert.maximum_level_label || meta[alert.maximum_level_72h].label }}</h3>
           <p>{{ alert.simple_explanation }}</p>
           <small v-if="alert.rule_version" class="rule-version">Criterio publicado: versión {{ alert.rule_version }}</small>
