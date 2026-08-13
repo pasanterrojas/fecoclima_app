@@ -34,8 +34,28 @@ function values(period: 'current' | 'previous_year'): Array<number | null> {
 
 const currentLabels = computed(() => labels('current'))
 const previousLabels = computed(() => labels('previous_year'))
-const currentDatasets = computed(() => [{ label: `${selectedMetric.value.label} · periodo actual`, data: values('current') }])
-const previousDatasets = computed(() => [{ label: `${selectedMetric.value.label} · año anterior`, data: values('previous_year') }])
+const selectedChartStyle = computed(() => {
+  if (selectedKey.value === 'temperature_c') {
+    return {
+      borderColor: '#E67E22',
+      backgroundColor: 'rgba(230, 126, 34, 0.12)'
+    }
+  }
+
+  return {}
+})
+
+const currentDatasets = computed(() => [{
+  label: `${selectedMetric.value.label} · periodo actual`,
+  data: values('current'),
+  ...selectedChartStyle.value
+}])
+
+const previousDatasets = computed(() => [{
+  label: `${selectedMetric.value.label} · año anterior`,
+  data: values('previous_year'),
+  ...selectedChartStyle.value
+}])
 const currentSummaryValue = computed(() => props.data?.current.summary?.[selectedMetric.value.key]?.[selectedMetric.value.statistic] ?? null)
 const previousSummaryValue = computed(() => props.data?.previous_year.summary?.[selectedMetric.value.key]?.[selectedMetric.value.statistic] ?? null)
 const deltaValue = computed(() => props.data?.deltas?.[selectedMetric.value.delta] ?? null)
@@ -66,7 +86,6 @@ function periodLabel(period: 'current' | 'previous_year'): string {
           <div>
             <span class="eyebrow">Comportamiento histórico equivalente</span>
             <h3>Periodo actual vs. el mismo periodo del año anterior</h3>
-            <p>La comparación se ancla a la última lectura disponible de la estación, incluso cuando el proveedor está retrasado.</p>
           </div>
         </div>
         <div class="head-actions">

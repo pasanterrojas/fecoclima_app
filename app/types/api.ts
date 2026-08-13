@@ -23,6 +23,21 @@ export interface MetricValue {
   value: number | string | null
   unit?: string
   origin: 'measured' | 'imported' | 'estimated' | 'forecast' | 'unavailable'
+  interpretation?: {
+    title: string
+    minimum: number
+    maximum: number
+    unit: string
+    ranges: Array<{
+      from: number
+      to: number
+      label: string
+      description: string
+      color: string
+    }>
+    caution?: string
+    source_url?: string
+  }
 }
 
 export interface AlertCondition {
@@ -32,6 +47,13 @@ export interface AlertCondition {
   value?: number | null
   unit?: string | null
   explanation?: string
+  variable?: string | null
+  operator?: 'between' | 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | string | null
+  threshold_min?: number | null
+  threshold_max?: number | null
+  threshold_value?: number | null
+  period_value?: number | null
+  period_aggregation?: 'mean' | 'sum' | string | null
 }
 
 export interface DiseaseRisk {
@@ -317,6 +339,14 @@ export interface SourceSyncStatus {
   received: number
   created: number
   updated: number
+  sync_from?: string | null
+  sync_to?: string | null
+  sync_timezone?: string | null
+  received_definition?: string | null
+  analysis_period?: '24h' | '72h' | '7d' | '30d' | string
+  analysis_from?: string | null
+  analysis_to?: string | null
+  analysis_readings?: number
 }
 
 export interface ForecastStatus {

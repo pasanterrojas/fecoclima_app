@@ -25,8 +25,22 @@ const selectionSignature = computed(() => [selection.stationId, selection.cropCo
 const canAnalyze = computed(() => Boolean(selection.stationId && selection.cropCode && selection.plantingDate) && !analyzing.value)
 const chartLabels = computed(() => dashboard.value?.series.map(item => new Date(String(item.sampled_at)).toLocaleString('es-PY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) || [])
 const temperatureData = computed(() => [
-  { label: 'Temperatura °C', data: dashboard.value?.series.map(item => item.temperature_c as number | null) || [] },
-  { label: 'Humedad %', data: dashboard.value?.series.map(item => item.humidity_pct as number | null) || [] }
+  {
+    label: 'Temperatura °C',
+    data: dashboard.value?.series.map(
+      item => item.temperature_c as number | null
+    ) || [],
+    borderColor: '#E67E22', // Naranja
+    backgroundColor: 'rgba(230, 126, 34, 0.12)'
+  },
+  {
+    label: 'Humedad %',
+    data: dashboard.value?.series.map(
+      item => item.humidity_pct as number | null
+    ) || [],
+    borderColor: '#26834A', // Verde
+    backgroundColor: 'rgba(38, 131, 74, 0.12)'
+  }
 ])
 const rainData = computed(() => [
   { label: 'Lluvia mm', data: dashboard.value?.series.map(item => item.rain_mm as number | null) || [] },
@@ -46,15 +60,47 @@ const sourceSyncMessage = computed(() => {
   const sync = dashboard.value?.source_sync
   if (!sync?.requested) return ''
   if (sync.status === 'COMPLETED') {
-    if (sync.created || sync.updated) return `FECOCLIMA actualizado: ${sync.received} lecturas recibidas, ${sync.created} nuevas y ${sync.updated} actualizadas.`
+    if (sync.received || sync.created || sync.updated) {
+      const syncDates = sync.sync_from && sync.sync_to
+        ? ` entre ${formatShortDate(sync.sync_from)} y ${formatShortDate(sync.sync_to)}`
+        : ''
+      const analysisCount = Number(sync.analysis_readings || 0)
+      const analysisWindow = sync.analysis_from && sync.analysis_to
+        ? ` entre ${formatShortDateTime(sync.analysis_from)} y ${formatShortDateTime(sync.analysis_to)}`
+        : ' dentro de su ventana horaria exacta'
+      const analysisDetail = sync.analysis_period
+        ? ` El análisis de ${periodLabel(sync.analysis_period)} usó ${analysisCount} lecturas${analysisWindow}.`
+        : ''
+      return `FECOCLIMA entregó ${sync.received} lecturas únicas${syncDates}`
+    }
     return 'FECOCLIMA respondió, pero no entregó lecturas más recientes para la ventana consultada.'
   }
-  if (sync.status === 'CURRENT') return 'La sincronización reciente se reutilizó para evitar llamadas repetidas al proveedor.'
+  if (sync.status === 'CURRENT') {
+    const analysisWindow = sync.analysis_from && sync.analysis_to
+      ? ` entre ${formatShortDateTime(sync.analysis_from)} y ${formatShortDateTime(sync.analysis_to)}`
+      : ' dentro de su ventana horaria exacta'
+    const analysisDetail = sync.analysis_period
+      ? ` El análisis de ${periodLabel(sync.analysis_period)} usó ${Number(sync.analysis_readings || 0)} lecturas${analysisWindow}.`
+      : ''
+    return `La sincronización reciente se reutilizó para evitar llamadas repetidas al proveedor.${analysisDetail}`
+  }
   if (sync.status === 'IN_PROGRESS') return 'Otra sincronización de FECOCLIMA ya está en ejecución. Se muestran los datos almacenados.'
   if (sync.status === 'MISCONFIGURED') return 'La estación no puede actualizarse porque falta el GUID externo o la credencial FECOCLIMA.'
   if (sync.status === 'FAILED') return 'FECOCLIMA no respondió correctamente. El análisis continúa con la última información guardada.'
   return ''
 })
+
+function periodLabel(period?: string | null): string {
+  return ({ '24h': '24 horas', '72h': '72 horas', '7d': '7 días', '30d': '30 días' } as Record<string, string>)[String(period || '')] || String(period || '')
+}
+
+function formatShortDate(value: string): string {
+  return new Date(`${value}T12:00:00`).toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })
+}
+
+function formatShortDateTime(value: string): string {
+  return new Date(value).toLocaleString('es-PY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
 
 function alertBadgeClass(color?: string, level?: string): string {
   const configured = String(color || '').toLowerCase()
@@ -233,7 +279,7 @@ onMounted(async () => {
         <section class="grid grid-3 major-grid"><AlertStatusCard :alert="dashboard.alert" /><PhenologyStatusCard :data="dashboard.phenology" :crop-name="dashboard.crop.name" /><DataQualityCard :quality="dashboard.data_quality" /></section>
 
         <section class="section-block">
-          <AgentInsightCard :crop-name="dashboard.crop.name" :recommendation="dashboard.recommendation" :loading="agentLoading" :error="agentError" @refresh="generateAgentCriterion(true)" />
+          <AgentInsightCard :crop-name="dashboard.crop.name" :recommendation="dashboard.recommendation" :conditions="dashboard.alert.conditions" :period="selection.period" :loading="agentLoading" :error="agentError" @refresh="generateAgentCriterion(true)" />
         </section>
 
         <section class="section-block">
@@ -257,19 +303,18 @@ onMounted(async () => {
             <article v-for="day in dashboard.forecast" :key="String(day.date)" class="card forecast"><b>{{ new Date(String(day.date) + 'T12:00:00').toLocaleDateString('es-PY', { weekday: 'short', day: '2-digit', month: 'short' }) }}</b><span>{{ day.temperature_max_c ?? '—' }}° / {{ day.temperature_min_c ?? '—' }}°</span><small>Lluvia {{ day.precipitation_mm ?? 0 }} mm · {{ day.precipitation_probability_pct ?? 0 }}%</small><small>HR {{ day.humidity_pct ?? '—' }}% · Suelo {{ day.soil_temperature_avg_c ?? '—' }}°C</small><small>Humedad suelo {{ day.estimated_soil_moisture_pct ?? '—' }}% · Mojado estimado {{ day.leaf_wetness_hours ?? '—' }} h</small></article>
           </div>
           <div v-else class="card"><EmptyState title="Pronóstico no disponible" :message="dashboard.forecast_status?.error || (dashboard.forecast_status?.configured ? 'Open-Meteo no devolvió datos para la ubicación.' : 'La estación necesita latitud y longitud para consultar Open-Meteo.')" /></div>
-          <p v-if="dashboard.forecast.length" class="forecast-note">El suelo proviene del modelo meteorológico. El mojado foliar futuro es una aproximación; no reemplaza el sensor de hoja.</p>
+          
         </section>
 
         <section class="section-block">
           <h2 class="section-title">Riesgo potencial según el pronóstico</h2>
-          <p class="section-help">La clasificación usa los mismos niveles configurados en la versión publicada de /fecoclima-ia/admin/reglas. Es una proyección, no una alerta observada.</p>
+         
           <div v-if="dashboard.forecast_risk?.days?.length" class="card forecast-risk-table"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Etapa estimada</th><th>Condiciones favorables</th><th>Cobertura</th><th>Nivel potencial</th></tr></thead><tbody><tr v-for="day in dashboard.forecast_risk.days" :key="day.date"><td>{{ new Date(`${day.date}T12:00:00`).toLocaleDateString('es-PY', { weekday: 'short', day: '2-digit', month: 'short' }) }}</td><td>{{ day.stage_code || '—' }} · {{ day.stage_name || 'Sin calendario' }}</td><td>{{ day.conditions_met }} de {{ day.conditions_total }}</td><td>{{ day.coverage_pct }}%</td><td><span class="badge" :class="alertBadgeClass(day.potential_color, day.potential_level)">{{ day.potential_label || day.potential_level }}</span></td></tr></tbody></table></div></div>
           <div v-else class="card"><EmptyState title="Sin pronóstico evaluable" :message="dashboard.forecast_risk?.methodology || 'No hay pronóstico o reglas publicadas para este cultivo.'" /></div>
         </section>
 
         <section class="section-block">
           <h2 class="section-title">Enfermedades con condiciones pronosticadas completas</h2>
-          <p class="section-help">Cada enfermedad se valida con sus parámetros publicados en /fecoclima-ia/admin/reglas. No constituye diagnóstico.</p>
           <div v-if="dashboard.forecast_risk?.diseases?.length" class="grid grid-3"><ForecastDiseaseCard v-for="disease in dashboard.forecast_risk.diseases" :key="disease.name" :disease="disease" /></div>
           <div v-else class="card"><EmptyState title="Sin coincidencias completas" :message="dashboard.forecast_risk?.methodology || 'No hay reglas completamente evaluables con las variables del pronóstico.'" /></div>
           <div v-if="dashboard.forecast_risk?.unresolved_diseases?.length" class="notice forecast-limitations"><b>Reglas no proyectadas por falta de variables:</b><span v-for="item in dashboard.forecast_risk.unresolved_diseases" :key="item.name">{{ item.name }} ({{ item.missing_variables.join(', ') }})</span></div>
@@ -277,7 +322,6 @@ onMounted(async () => {
 
         <section class="section-block"><SatelliteStatusCard :data="dashboard.satellite" :status="dashboard.satellite_status" :recommendation="dashboard.satellite_recommendation" :refreshing="satelliteRefreshing" :agent-loading="satelliteAgentLoading" :error="satelliteError" :agent-error="satelliteAgentError" @refresh="refreshSatellite" @agent-refresh="generateSatelliteCriterion(true)" /></section>
         <section class="section-block"><CropAgentChat :alert-id="dashboard.alert.evaluation_id" :period="selection.period" :crop-name="dashboard.crop.name" :disabled="analysisDirty" /></section>
-        <p class="engine-note">Pandas y NumPy procesan datos; las reglas publicadas deciden el color; el agente interpreta, conversa y analiza imágenes solo cuando usted lo solicita.</p>
       </template>
 
       <div v-else-if="!selectorsLoading && !analyzing" class="card start-card"><EmptyState title="Configure la consulta" message="Seleccione estación, cultivo, fecha de siembra y periodo; después pulse “Analizar con IA”." /></div>

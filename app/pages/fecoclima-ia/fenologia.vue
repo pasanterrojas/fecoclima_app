@@ -6,7 +6,7 @@ useSeoMeta({ title: 'Fenología' })
 const { request } = useApi()
 const stations = ref<Station[]>([])
 const crops = ref<Crop[]>([])
-const form = reactive({ station_id: '', crop_code: 'SOJA', cycle_type: 'normal', planting_date: new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10) })
+const form = reactive({ station_id: '', crop_code: 'TRIGO', cycle_type: 'normal', planting_date: new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10) })
 const result = ref<any>(null)
 const loading = ref(false)
 const error = ref('')
@@ -32,7 +32,7 @@ async function calculate(force = false) {
 }
 function reset() {
   form.station_id = stations.value[0]?.id || ''
-  form.crop_code = crops.value[0]?.code || 'SOJA'
+  form.crop_code = crops.value.find(item => item.code === 'TRIGO')?.code || crops.value[0]?.code || 'TRIGO'
   form.cycle_type = 'normal'
   form.planting_date = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10)
   result.value = null

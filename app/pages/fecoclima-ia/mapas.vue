@@ -26,9 +26,8 @@ import type {
 } from '~/types/api'
 
 useSeoMeta({ title: 'Análisis satelital' })
-const { request } = useApi()
+const { request, apiUrl } = useApi()
 const selection = useSelectionStore()
-const config = useRuntimeConfig()
 
 const stations = ref<Station[]>([])
 const crops = ref<Crop[]>([])
@@ -112,13 +111,7 @@ const latestCatalogDiffers = computed(() => {
 
 function resolveImageUrl(source?: string | null): string | null {
   if (!source) return null
-  if (/^https?:\/\//i.test(source)) return source
-  try {
-    const api = new URL(String(config.public.apiBase))
-    return new URL(source, api.origin).toString()
-  } catch {
-    return source
-  }
+  return apiUrl(source)
 }
 
 function chooseVisualLayer(key: string) {

@@ -6,7 +6,7 @@ function defaultPlantingDate(): string {
 
 export const useSelectionStore = defineStore('selection', () => {
   const stationId = ref<string>('')
-  const cropCode = ref<string>('SOJA')
+  const cropCode = ref<string>('TRIGO')
   const plantingDate = ref<string>(defaultPlantingDate())
   const period = ref<string>('72h')
   return { stationId, cropCode, plantingDate, period }

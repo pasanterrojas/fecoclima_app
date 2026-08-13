@@ -10,6 +10,19 @@ export function useApi() {
     return new URL(configured, requestOrigin).toString().replace(/\/$/, '')
   }
 
+  function apiUrl(path: string): string {
+    if (/^https?:\/\//i.test(path)) return path
+    const configured = String(config.public.apiBase || '/api/v1').replace(/\/$/, '')
+    // Satellite payloads from older backend versions contain /api/v1 in the
+    // returned path. Strip only that known API prefix, then append the route to
+    // the configured public base. This preserves production proxy prefixes
+    // such as /fecoclima-ia-api/api/v1 instead of accidentally resolving the
+    // image at the domain root.
+    const route = `/${String(path || '').replace(/^\/+/, '').replace(/^api\/v1(?:\/|$)/, '')}`
+    if (/^https?:\/\//i.test(configured)) return `${configured}${route}`
+    return `${configured.startsWith('/') ? '' : '/'}${configured}${route}`.replace(/\/{2,}/g, '/')
+  }
+
   async function request<T>(path: string, options: Parameters<typeof $fetch<T>>[1] = {}): Promise<T> {
     const headers = new Headers(options.headers as HeadersInit | undefined)
     const method = String(options.method || 'GET').toUpperCase()
@@ -34,5 +47,5 @@ export function useApi() {
     })
   }
 
-  return { request }
+  return { request, apiUrl }
 }

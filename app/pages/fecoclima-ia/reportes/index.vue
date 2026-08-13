@@ -9,7 +9,7 @@ const crops = ref<Crop[]>([])
 const reports = ref<any[]>([])
 const form = reactive({
   station_id: '',
-  crop_code: 'SOJA',
+  crop_code: 'TRIGO',
   planting_date: new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10),
   date_from: new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10),
   date_to: new Date().toISOString().slice(0, 10)
@@ -22,6 +22,9 @@ async function load() {
     request('/public/stations'), request('/public/crops'), request('/reports/public', { query: { limit: 30 } })
   ])
   if (!form.station_id && stations.value[0]) form.station_id = stations.value[0].id
+  if (!crops.value.some(crop => crop.code === form.crop_code)) {
+    form.crop_code = crops.value.find(crop => crop.code === 'TRIGO')?.code || crops.value[0]?.code || ''
+  }
 }
 async function createReport() {
   creating.value = true
@@ -33,6 +36,14 @@ async function createReport() {
   } finally { creating.value = false }
 }
 onMounted(load)
+
+function formatCreatedAt(value: string): string {
+  return new Date(value).toLocaleString('es-PY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatPeriod(from: string, to: string): string {
+  return `${from} a ${to}`
+}
 </script>
 <template>
   <div class="page"><div class="container">
@@ -50,8 +61,8 @@ onMounted(load)
     </form>
     <p v-if="message" class="notice">{{ message }}</p>
     <section class="history"><div class="row-between"><h2 class="section-title">Historial</h2><button class="btn btn-light" @click="load"><RefreshCw/>Actualizar</button></div>
-      <div class="card"><div class="table-wrap"><table><thead><tr><th>Creado</th><th>Estación</th><th>Cultivo</th><th>Siembra</th><th>Periodo</th><th>Estado</th><th>Archivo</th></tr></thead><tbody><tr v-for="report in reports" :key="report.id"><td>{{ new Date(report.created_at).toLocaleString('es-PY') }}</td><td>{{ report.station_name }}</td><td>{{ report.crop_name }}</td><td>{{ report.planting_date || '—' }}</td><td>{{ report.date_from }} – {{ report.date_to }}</td><td><span class="badge" :class="report.status==='COMPLETED'?'badge-success':report.status==='FAILED'?'badge-danger':'badge-warning'">{{ report.status }}</span></td><td><NuxtLink v-if="report.status==='COMPLETED'" class="btn btn-light" :to="`/fecoclima-ia/reportes/${report.id}`"><FileDown/>Abrir</NuxtLink><span v-else>—</span></td></tr><tr v-if="!reports.length"><td colspan="7"><EmptyState title="Sin reportes"/></td></tr></tbody></table></div></div>
+      <div class="card history-card"><div class="table-wrap mobile-card-list"><table><thead><tr><th>Creado</th><th>Estación</th><th>Cultivo</th><th>Siembra</th><th>Periodo</th><th>Estado</th><th>Archivo</th></tr></thead><tbody><tr v-for="report in reports" :key="report.id"><td data-label="Creado">{{ formatCreatedAt(report.created_at) }}</td><td data-label="Estación">{{ report.station_name }}</td><td data-label="Cultivo">{{ report.crop_name }}</td><td data-label="Siembra">{{ report.planting_date || '—' }}</td><td data-label="Periodo">{{ formatPeriod(report.date_from, report.date_to) }}</td><td data-label="Estado"><span class="badge" :class="report.status==='COMPLETED'?'badge-success':report.status==='FAILED'?'badge-danger':'badge-warning'">{{ report.status }}</span></td><td data-label="Archivo"><NuxtLink v-if="report.status==='COMPLETED'" class="btn btn-light" :to="`/fecoclima-ia/reportes/${report.id}`"><FileDown/>Abrir</NuxtLink><span v-else>—</span></td></tr><tr v-if="!reports.length" class="empty-row"><td colspan="7"><EmptyState title="Sin reportes"/></td></tr></tbody></table></div></div>
     </section>
   </div></div>
 </template>
-<style scoped>.report-form{margin-top:24px}.report-actions{padding:0 22px 22px;display:flex;justify-content:flex-end}.btn svg{width:18px}.history{margin-top:30px}</style>
+<style scoped>.report-form{margin-top:24px}.report-actions{padding:0 22px 22px;display:flex;justify-content:flex-end}.btn svg{width:18px}.history{margin-top:30px}.history-card{overflow:hidden}@media(max-width:720px){.report-actions{padding:0 17px 17px}.report-actions .btn,.history>.row-between .btn{width:100%}.mobile-card-list{padding:10px;background:var(--fc-surface-muted)}.mobile-card-list table,.mobile-card-list tbody,.mobile-card-list tr,.mobile-card-list td{display:block;width:100%}.mobile-card-list thead{display:none}.mobile-card-list tbody{display:grid;gap:12px}.mobile-card-list tr{padding:10px 13px;border:1px solid var(--fc-border);border-radius:12px;background:#fff}.mobile-card-list td{display:grid;grid-template-columns:minmax(88px,.65fr) minmax(0,1.35fr);gap:12px;padding:8px 0;border-bottom:1px dashed #d9e5ec}.mobile-card-list td:last-child{border-bottom:0}.mobile-card-list td::before{content:attr(data-label);color:var(--fc-text-muted);font-size:.76rem;font-weight:800}.mobile-card-list td .btn{width:100%}.mobile-card-list .empty-row{padding:0}.mobile-card-list .empty-row td{display:block;border:0}.mobile-card-list .empty-row td::before{display:none}}@media(max-width:380px){.mobile-card-list td{grid-template-columns:1fr;gap:3px}}</style>
