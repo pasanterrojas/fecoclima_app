@@ -10,7 +10,7 @@ const reports = ref<any[]>([])
 const form = reactive({
   station_id: '',
   crop_code: 'TRIGO',
-  planting_date: new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10),
+  planting_date: '',
   date_from: new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10),
   date_to: new Date().toISOString().slice(0, 10)
 })
@@ -48,12 +48,12 @@ function formatPeriod(from: string, to: string): string {
 <template>
   <div class="page"><div class="container">
     <h1 class="page-title">Reportes agrometeorológicos</h1>
-    <p class="page-subtitle">Seleccione estación, cultivo, fecha de siembra y periodo. No requiere crear ni mantener ciclos productivos.</p>
+    <p class="page-subtitle">Elija su estación y cultivo, indique cuándo sembró y seleccione el periodo de su reporte.</p>
     <form class="card report-form" @submit.prevent="createReport">
       <div class="card-body form-grid">
         <label><span class="label">Estación</span><select v-model="form.station_id" class="select" required><option v-for="station in stations" :key="station.id" :value="station.id">{{ station.name }}</option></select></label>
         <label><span class="label">Cultivo</span><select v-model="form.crop_code" class="select" required><option v-for="crop in crops" :key="crop.id" :value="crop.code">{{ crop.name }}</option></select></label>
-        <label><span class="label">Fecha de siembra</span><input v-model="form.planting_date" class="input" type="date" :max="form.date_to" required></label>
+        <label><span class="label">¿Cuándo sembró?</span><input v-model="form.planting_date" class="input" type="date" :max="form.date_to" required><small>Así el reporte podrá considerar la etapa de su cultivo.</small></label>
         <label><span class="label">Fecha desde</span><input v-model="form.date_from" class="input" type="date" required></label>
         <label><span class="label">Fecha hasta</span><input v-model="form.date_to" class="input" type="date" required></label>
       </div>

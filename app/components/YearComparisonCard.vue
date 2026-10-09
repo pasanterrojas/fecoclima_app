@@ -4,6 +4,9 @@ import type { YearComparison } from '~/types/api'
 
 const props = withDefaults(defineProps<{
   data?: YearComparison | null
+  alertId?: string | null
+  period?: string
+  disabled?: boolean
 }>(), {
   data: null,
 })
@@ -84,8 +87,8 @@ function periodLabel(period: 'current' | 'previous_year'): string {
         <div class="heading">
           <span class="icon"><CalendarRange /></span>
           <div>
-            <span class="eyebrow">Comportamiento histórico equivalente</span>
-            <h3>Periodo actual vs. el mismo periodo del año anterior</h3>
+            <span class="eyebrow">Comparación de lecturas</span>
+            <h3>Ahora y el año pasado <InfoHint text="Comparamos el mismo periodo de cada año. Si faltan lecturas, las diferencias pueden engañar." /></h3>
           </div>
         </div>
         <div class="head-actions">
@@ -96,8 +99,8 @@ function periodLabel(period: 'current' | 'previous_year'): string {
       <template v-if="data">
         <div class="comparison-status">
           <span class="badge" :class="comparable ? 'badge-success' : 'badge-warning'">{{ comparable ? 'Periodos comparables' : 'Cobertura insuficiente' }}</span>
-          <span>Actual: {{ data.current.coverage_pct }}% de cobertura</span>
-          <span>Año anterior: {{ data.previous_year.coverage_pct }}% de cobertura</span>
+          <span>Con lecturas este año: {{ data.current.coverage_pct }}%</span>
+          <span>Con lecturas el año pasado: {{ data.previous_year.coverage_pct }}%</span>
         </div>
 
         <div class="summary-grid">
@@ -126,6 +129,7 @@ function periodLabel(period: 'current' | 'previous_year'): string {
       </template>
 
       <EmptyState v-else title="Comparación no disponible" message="Ejecute el análisis para consultar el periodo actual y su equivalente del año anterior." />
+      <WidgetExplanation v-if="data" :alert-id="alertId" :period="period || '72h'" widget="year_comparison" :disabled="disabled" />
     </div>
   </article>
 </template>

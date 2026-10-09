@@ -6,12 +6,13 @@ useSeoMeta({ title: 'Fenología' })
 const { request } = useApi()
 const stations = ref<Station[]>([])
 const crops = ref<Crop[]>([])
-const form = reactive({ station_id: '', crop_code: 'TRIGO', cycle_type: 'normal', planting_date: new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10) })
+const form = reactive({ station_id: '', crop_code: 'TRIGO', cycle_type: 'normal', planting_date: '' })
 const result = ref<any>(null)
 const loading = ref(false)
 const error = ref('')
 const agentError = ref('')
-const today = new Date().toISOString().slice(0, 10)
+const now = new Date()
+const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
 onMounted(async () => {
   [stations.value, crops.value] = await Promise.all([request('/public/stations'), request('/public/crops')])
@@ -34,7 +35,7 @@ function reset() {
   form.station_id = stations.value[0]?.id || ''
   form.crop_code = crops.value.find(item => item.code === 'TRIGO')?.code || crops.value[0]?.code || 'TRIGO'
   form.cycle_type = 'normal'
-  form.planting_date = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10)
+  form.planting_date = ''
   result.value = null
 }
 const stage = computed(() => result.value?.phenology)
@@ -44,12 +45,12 @@ const cropName = computed(() => crops.value.find(item => item.code === form.crop
 
 <template>
   <div class="page phenology-page"><div class="container">
-    <div class="phenology-title"><Sprout/><h1 class="page-title">Fenología y ambiente acumulado</h1><p class="page-subtitle">La etapa estimada y un criterio breve sobre lo ocurrido desde la siembra.</p></div>
+    <div class="phenology-title"><Sprout/><h1 class="page-title">¿En qué etapa está su cultivo?</h1><p class="page-subtitle">Indique cuándo sembró. Le ayudaremos a estimar la etapa y a revisar cómo estuvo el tiempo desde entonces.</p></div>
     <form class="phenology-form card" @submit.prevent="calculate(false)"><div class="card-body form-grid">
       <label><span class="label">Estación</span><select v-model="form.station_id" class="select" required><option value="">Seleccione</option><option v-for="s in stations" :key="s.id" :value="s.id">{{ s.name }}</option></select></label>
       <label><span class="label">Cultivo</span><select v-model="form.crop_code" class="select"><option v-for="c in crops" :key="c.id" :value="c.code">{{ c.name }}</option></select></label>
       <label><span class="label">Tipo de ciclo</span><select v-model="form.cycle_type" class="select"><option value="corto">Corto</option><option value="normal">Normal</option><option value="largo">Largo</option></select></label>
-      <label><span class="label">Fecha de siembra</span><input v-model="form.planting_date" class="input" type="date" :max="today" required></label>
+      <label><span class="label">¿Cuándo sembró?</span><input v-model="form.planting_date" class="input" type="date" :max="today" required><small>Nos ayudará a estimar la etapa actual del cultivo.</small></label>
     </div><div class="actions"><button type="submit" class="btn btn-secondary" :disabled="loading"><Search/>{{ loading ? 'Sincronizando y analizando…' : 'Analizar desde la siembra' }}</button><button type="button" class="btn btn-primary" @click="reset"><RotateCcw/>Limpiar</button></div></form>
     <ErrorState v-if="error" :message="error" @retry="calculate(false)" />
     <LoadingState v-else-if="loading && !result" />
@@ -70,7 +71,7 @@ const cropName = computed(() => crops.value.find(item => item.code === form.crop
       </div></div></section>
 
       <section class="agent-section"><AgentInsightCard :crop-name="cropName" :recommendation="result.recommendation as Recommendation" :loading="loading" :error="agentError" @refresh="calculate(true)" /></section>
-      <p class="notice notice-warning small">La etapa es una estimación temporal. El criterio IA usa los datos ambientales disponibles desde la siembra, pero debe contrastarse con observación de campo.</p>
+      <p class="notice notice-warning small">La etapa se estima por la fecha de siembra. Compruebe en el campo si sus plantas están en esa etapa; el texto indica si respondió la IA o se usó un respaldo.</p>
     </template>
   </div></div>
 </template>

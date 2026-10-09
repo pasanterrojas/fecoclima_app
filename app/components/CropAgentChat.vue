@@ -3,7 +3,7 @@ import { Bot, FileDown, ImagePlus, RotateCcw, Send, Sparkles, X } from 'lucide-v
 
 interface PendingImage { id: string; file: File; preview: string }
 interface ChatAttachment { id: string; name: string; preview: string }
-interface ChatMessage { role: 'user' | 'assistant'; content: string; attachments?: ChatAttachment[] }
+interface ChatMessage { role: 'user' | 'assistant'; content: string; attachments?: ChatAttachment[]; fallback?: boolean; fallbackReason?: string }
 
 const props = defineProps<{
   alertId?: string | null
@@ -98,7 +98,7 @@ async function send(question = draft.value) {
     body.append('history_json', JSON.stringify(history))
     attached.forEach(item => body.append('images', item.file, item.file.name))
     const response: any = await request('/public/agent/chat', { method: 'POST', body })
-    messages.value.push({ role: 'assistant', content: response.markdown || 'El agente no devolvió texto.' })
+    messages.value.push({ role: 'assistant', content: response.markdown || 'No recibimos respuesta.', fallback: Boolean(response.fallback), fallbackReason: response.fallback_reason })
   } catch (exception: any) {
     error.value = exception?.data?.detail || exception?.message || 'No se pudo consultar al agente.'
   } finally {
@@ -118,7 +118,7 @@ async function downloadReport() {
     body.append('period', props.period)
     body.append('conversation_json', JSON.stringify(messages.value.map(item => ({
       role: item.role,
-      content: item.content,
+      content: item.role === 'assistant' && item.fallback ? `[Respuesta de respaldo · sin IA]\n${item.content}` : item.content,
       image_names: (item.attachments || []).map(attachment => attachment.name),
     }))))
     reportImages.value.slice(0, 8).forEach(item => body.append('images', item.file, item.file.name))
@@ -170,7 +170,7 @@ onBeforeUnmount(clearConversation)
       <div class="chat-avatar"><Bot /></div>
       <div class="chat-title">
         <div class="eyebrow"><Sparkles /> Consulta contextual</div>
-        <h2>Conversar con el agente de {{ cropName }}</h2>
+        <h2>Pregunte sobre su {{ cropName.toLowerCase() }}</h2>
       </div>
       <div v-if="messages.length" class="chat-tools">
         <button class="btn btn-light" type="button" :disabled="loading || reportLoading" @click="clearConversation"><RotateCcw /> Nueva conversación</button>
@@ -178,14 +178,15 @@ onBeforeUnmount(clearConversation)
       </div>
     </header>
 
-    <div v-if="!alertId" class="notice">Ejecute primero “Analizar con IA” para crear el contexto de la consulta.</div>
+    <div v-if="!alertId" class="notice">Primero consulte cómo está su cultivo para poder hacer preguntas sobre los datos.</div>
     <template v-else>
       <div v-if="!messages.length" class="suggestions">
         <button v-for="suggestion in suggestions" :key="suggestion" type="button" @click="send(suggestion)">{{ suggestion }}</button>
       </div>
       <div v-else ref="messageList" class="messages" aria-live="polite">
         <article v-for="(message,index) in messages" :key="index" class="message" :class="message.role">
-          <div class="message-label">{{ message.role === 'assistant' ? 'Agente IA' : 'Usted' }}</div>
+          <div class="message-label">{{ message.role === 'assistant' ? message.fallback ? 'Respuesta de respaldo · sin IA' : 'Agente IA' : 'Usted' }}</div>
+          <AiStatusNotice v-if="message.role === 'assistant' && message.fallback" status="fallback" :reason="message.fallbackReason" />
           <div v-if="message.attachments?.length" class="message-images">
             <figure v-for="attachment in message.attachments" :key="attachment.id">
               <img :src="attachment.preview" :alt="`Imagen adjunta: ${attachment.name}`">

@@ -63,9 +63,14 @@ function isJsonField(field: Field): boolean {
 }
 
 function initialValue(field: Field): any {
+  const stationDefaults: Record<string, string | number> = {
+    country: 'Paraguay', timezone: 'America/Asuncion', source_type: 'MANUAL',
+    expected_interval_minutes: 10, influence_radius_m: 750
+  }
+  if (field.key in stationDefaults) return stationDefaults[field.key]
   if (field.type === 'checkbox') return true
   if (field.type === 'geojson-map') return null
-  if (isJsonField(field)) return '{}'
+  if (isJsonField(field)) return field.key === 'available_variables' ? '[]' : '{}'
   return ''
 }
 

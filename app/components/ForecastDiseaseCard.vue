@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { CloudSun, Microscope } from 'lucide-vue-next'
 import type { ForecastDisease } from '~/types/api'
-defineProps<{ disease: ForecastDisease }>()
+defineProps<{ disease: ForecastDisease; alertId?: string | null; period?: string; disabled?: boolean }>()
 </script>
 <template>
   <article class="card projection">
     <div class="head"><span><Microscope/></span><div><b>{{ disease.name }}</b><span class="badge" :class="disease.risk==='alto'?'badge-danger':disease.risk==='moderado'?'badge-warning':'badge-success'">{{ disease.risk }}</span></div></div>
     <p v-if="disease.reason || disease.reasons?.length">{{ disease.reason || disease.reasons?.[0] }}</p>
     <div class="dates"><CloudSun/> {{ disease.dates?.length ? disease.dates.map(d=>new Date(`${d}T12:00:00`).toLocaleDateString('es-PY',{day:'2-digit',month:'short'})).join(', ') : 'Sin fecha' }}</div>
+    <WidgetExplanation :alert-id="alertId" :period="period || '72h'" widget="forecast_disease" :item-key="disease.name" :disabled="disabled" />
   </article>
 </template>
 <style scoped>

@@ -2,7 +2,7 @@
 import { AlertTriangle, CheckCircle2, HelpCircle, ShieldAlert } from 'lucide-vue-next'
 import type { AlertSummary, AlertLevel } from '~/types/api'
 
-const props = defineProps<{ alert: AlertSummary }>()
+const props = defineProps<{ alert: AlertSummary; period?: string; disabled?: boolean }>()
 const meta: Record<AlertLevel, { label: string; className: string }> = {
   NINGUNA: { label: 'Sin alerta relevante', className: 'none' },
   MODERADA: { label: 'Alerta moderada', className: 'moderate' },
@@ -31,17 +31,17 @@ const colorClass = computed(() => {
     <div class="card-body">
       <div class="row-between">
         <div>
-          <div class="eyebrow">Peor nivel · últimas 72 horas<span v-if="evaluationDateLabel"> · {{ evaluationDateLabel }}</span></div>
+          <div class="eyebrow">Mayor atención detectada en los últimos 3 días<span v-if="evaluationDateLabel"> · {{ evaluationDateLabel }}</span><InfoHint text="Este nivel corresponde a la fecha indicada. Puede ser distinto del nivel de hoy." /></div>
           <h3>{{ alert.maximum_level_label || meta[alert.maximum_level_72h].label }}</h3>
           <p>{{ alert.simple_explanation }}</p>
-          <small v-if="alert.rule_version" class="rule-version">Criterio publicado: versión {{ alert.rule_version }}</small>
+          <details v-if="alert.rule_version" class="rule-version"><summary>Cómo se calculó (i)</summary>Reglas del cultivo, versión {{ alert.rule_version }}</details>
         </div>
         <ShieldAlert class="hero-icon" />
       </div>
       <div class="alert-kpis">
-        <div><b>{{ alert.conditions_met }}/{{ alert.conditions_total || 6 }}</b><span>condiciones</span></div>
-        <div><b>{{ alert.completion_percentage }}%</b><span>completitud</span></div>
-        <div><b>{{ Math.round(alert.confidence * 100) }}%</b><span>confianza</span></div>
+        <div><b>{{ alert.conditions_met }}/{{ alert.conditions_total }}</b><span>señales encontradas <InfoHint text="Cantidad de condiciones observadas que coincidieron con el criterio del cultivo." /></span></div>
+        <div><b>{{ alert.completion_percentage }}%</b><span>datos para evaluar <InfoHint text="Cuántas condiciones se pudieron comprobar con las lecturas disponibles." /></span></div>
+        <div><b>{{ Math.round(alert.confidence * 100) }}%</b><span>fiabilidad del cálculo <InfoHint text="Indica qué tan completo es el cálculo. No es una certeza sobre la salud del cultivo." /></span></div>
       </div>
       <div class="conditions">
         <div v-for="condition in alert.conditions" :key="condition.key" class="condition" :title="condition.explanation">
@@ -51,6 +51,7 @@ const colorClass = computed(() => {
           <span>{{ condition.label }}</span>
         </div>
       </div>
+      <WidgetExplanation :alert-id="alert.evaluation_id" :period="period || '72h'" widget="alert" :disabled="disabled" />
     </div>
   </article>
 </template>

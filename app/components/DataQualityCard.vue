@@ -2,6 +2,9 @@
 import { DatabaseZap, Info } from 'lucide-vue-next'
 
 defineProps<{
+  alertId?: string | null
+  period?: string
+  disabled?: boolean
   quality: {
     completion_percentage: number
     record_completeness_percentage?: number
@@ -16,21 +19,20 @@ defineProps<{
 <template>
   <article class="card">
     <div class="card-body">
-      <div class="row"><DatabaseZap/><h3>Calidad de datos</h3></div>
+      <div class="row"><DatabaseZap/><h3>¿Hay suficientes datos?</h3><InfoHint text="Esto mide la disponibilidad de lecturas, no la salud del cultivo." /></div>
       <div class="quality-block">
-        <div class="quality-head"><span>Lecturas recibidas</span><b>{{ quality.record_completeness_percentage ?? quality.completion_percentage }}%</b></div>
+        <div class="quality-head"><span>Lecturas recibidas <InfoHint text="Se comparan con la frecuencia esperada para esta estación." /></span><b>{{ quality.record_completeness_percentage ?? quality.completion_percentage }}%</b></div>
         <div class="bar"><span :style="{width:`${quality.record_completeness_percentage ?? quality.completion_percentage}%`}"/></div>
-        <small>Compara registros recibidos con la frecuencia esperada de la estación.</small>
       </div>
       <div class="quality-block">
-        <div class="quality-head"><span>Variables evaluables</span><b>{{ quality.variable_completeness_percentage ?? 0 }}%</b></div>
+        <div class="quality-head"><span>Datos que se pudieron analizar <InfoHint text="No todas las condiciones pueden evaluarse si faltan sensores o lecturas." /></span><b>{{ quality.variable_completeness_percentage ?? 0 }}%</b></div>
         <div class="bar variables"><span :style="{width:`${quality.variable_completeness_percentage ?? 0}%`} "/></div>
-        <small>Indica cuántas condiciones de la regla tienen un valor válido.</small>
       </div>
-      <p v-if="quality.missing_variables.length" class="notice notice-warning small"><b>Variables realmente faltantes:</b> {{ quality.missing_variables.join(', ') }}.</p>
-      <p v-else class="notice small">Las seis variables requeridas tienen un valor evaluable.</p>
-      <p class="muted small">Valores fuera de rango detectados: {{ quality.outliers }}</p>
+      <p v-if="quality.missing_variables.length" class="notice notice-warning small"><b>Faltan estas mediciones:</b> {{ quality.missing_variables.join(', ') }}.</p>
+      <p v-else class="notice small">Hay lecturas para las condiciones necesarias.</p>
+      <details><summary>Más detalles (i)</summary><p class="muted small">Lecturas fuera del rango esperado: {{ quality.outliers }}</p></details>
       <details v-if="quality.notes?.length" class="details"><summary><Info/> Cómo se interpreta</summary><ul><li v-for="note in quality.notes" :key="note">{{ note }}</li></ul></details>
+      <WidgetExplanation :alert-id="alertId" :period="period || '72h'" widget="quality" :disabled="disabled" />
     </div>
   </article>
 </template>

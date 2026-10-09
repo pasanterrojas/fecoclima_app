@@ -6,7 +6,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 const props = defineProps<{
   labels: string[]
-  datasets: Array<{ label: string; data: Array<number | null>; borderColor?: string; backgroundColor?: string }>
+  datasets: Array<{ label: string; data: Array<number | null>; borderColor?: string; backgroundColor?: string; axis?: 'left' | 'right'; unit?: string }>
 }>()
 
 const palette = ref<string[]>([])
@@ -25,19 +25,24 @@ const data = computed(() => ({
     ...dataset,
     borderColor: dataset.borderColor || palette.value[index % Math.max(palette.value.length, 1)] || 'currentColor',
     backgroundColor: dataset.backgroundColor || chartFill.value || 'transparent',
+    yAxisID: dataset.axis === 'right' ? 'yRight' : 'y',
     tension: 0.28,
     pointRadius: 1.5,
-    spanGaps: true,
+    spanGaps: false,
   })),
 }))
 
-const options = {
+const options = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index' as const, intersect: false },
   plugins: { legend: { position: 'bottom' as const } },
-  scales: { x: { ticks: { maxTicksLimit: 8 } }, y: { beginAtZero: false } },
-}
+  scales: {
+    x: { ticks: { maxTicksLimit: 8 } },
+    y: { beginAtZero: false, title: { display: Boolean(props.datasets.find(item => item.axis !== 'right')?.unit), text: props.datasets.find(item => item.axis !== 'right')?.unit || '' } },
+    ...(props.datasets.some(item => item.axis === 'right') ? { yRight: { position: 'right' as const, beginAtZero: false, grid: { drawOnChartArea: false }, title: { display: true, text: props.datasets.find(item => item.axis === 'right')?.unit || '' } } } : {})
+  },
+}))
 </script>
 
 <template>

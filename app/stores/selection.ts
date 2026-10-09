@@ -1,13 +1,10 @@
 import { defineStore } from 'pinia'
 
-function defaultPlantingDate(): string {
-  return new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10)
-}
-
 export const useSelectionStore = defineStore('selection', () => {
   const stationId = ref<string>('')
   const cropCode = ref<string>('TRIGO')
-  const plantingDate = ref<string>(defaultPlantingDate())
+  // Nunca inferir la fecha real de siembra a partir del reloj del navegador.
+  const plantingDate = ref<string>('')
   const period = ref<string>('72h')
   return { stationId, cropCode, plantingDate, period }
 }, { persist: false })

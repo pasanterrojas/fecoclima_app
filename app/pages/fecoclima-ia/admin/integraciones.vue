@@ -9,9 +9,7 @@ async function loadStations() {
   try {
     const result: any = await request('/stations', { query: { limit: 250 } })
     stations.value = (result.items || []).filter((item: any) => item.active !== false)
-    if (!selectedStationId.value && stations.value.length) {
-      selectedStationId.value = stations.value.find((item: any) => item.code === 'RAUL-PENA')?.id || stations.value[0].id
-    }
+    if (!stations.value.some((item: any) => item.id === selectedStationId.value)) selectedStationId.value = stations.value[0]?.id || ''
   } catch {
     stations.value = []
   }
@@ -65,7 +63,7 @@ const fields = [
       <label>
         <span class="label">Estación utilizada en la prueba</span>
         <select v-model="selectedStationId" class="select">
-          <option value="">Selección automática</option>
+          <option value="">Seleccione una estación</option>
           <option v-for="station in stations" :key="station.id" :value="station.id">
             {{ station.name }}
           </option>

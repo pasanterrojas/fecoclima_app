@@ -432,7 +432,7 @@ onMounted(async () => {
               <div class="watch-box"><h3>Qué cambió o qué vigilar</h3><ul v-if="context.interpretation.what_to_watch.length"><li v-for="item in context.interpretation.what_to_watch" :key="item">{{ item }}</li></ul><p v-else>No existe todavía una escena anterior comparable.</p></div>
               <div class="weather-box"><h3>Clima de la estación ese día</h3><template v-if="context.weather_on_capture"><p><Thermometer /> Temperatura media: <b>{{ formatNumber(context.weather_on_capture.temperature_avg_c, 1) }} °C</b></p><p><Droplets /> Humedad: <b>{{ formatNumber(context.weather_on_capture.humidity_avg_pct, 0) }}%</b></p><p><Cloud /> Lluvia: <b>{{ formatNumber(context.weather_on_capture.rain_sum_mm, 1) }} mm</b></p></template><p v-else>No hay resumen meteorológico guardado para la fecha de la escena.</p></div>
             </div>
-            <div v-if="agentResult" class="agent-result"><MarkdownContent :content="agentResult.markdown" /></div>
+            <div v-if="agentResult" class="agent-result"><AiStatusNotice :status="agentResult.fallback ? 'fallback' : 'completed'" :reason="agentResult.reason" /><MarkdownContent :content="agentResult.markdown" /></div>
             <p v-if="agentError" class="notice notice-warning">{{ agentError }}</p>
             <p class="single-limit">{{ context.interpretation.limitations[0] }}</p>
           </div>

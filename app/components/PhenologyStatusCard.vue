@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { CalendarDays, Sprout } from 'lucide-vue-next'
 import type { PhenologyStageStatus } from '~/types/api'
-defineProps<{ data: PhenologyStageStatus; cropName?: string }>()
+defineProps<{ data: PhenologyStageStatus; cropName?: string; alertId?: string | null; period?: string; disabled?: boolean }>()
 </script>
 <template>
   <article class="card phenology-card">
     <div class="card-body">
       <div class="row-between">
         <div>
-          <span class="eyebrow">Edad fenológica estimada</span>
+          <span class="eyebrow">Etapa estimada del cultivo <InfoHint text="La estimamos a partir de la fecha de siembra. Obsérvela también en sus plantas, ya que cada parcela puede avanzar a su ritmo." /></span>
           <h3>{{ data.stage_name || 'Configuración pendiente' }}</h3>
           <p>{{ data.description || data.message || 'Este cultivo todavía no tiene un calendario fenológico configurado.' }}</p>
         </div>
@@ -19,7 +19,7 @@ defineProps<{ data: PhenologyStageStatus; cropName?: string }>()
         <span v-if="cropName">{{ cropName }}</span>
       </div>
       <div class="progress"><span :style="{ width: `${Math.min(100, Math.max(0, data.stage_progress_pct || 0))}%` }"/></div>
-      <small>Estimación por fecha de siembra y calendario configurado para el cultivo; no sustituye una observación de campo.</small>
+      <WidgetExplanation :alert-id="alertId" :period="period || '72h'" widget="phenology" :disabled="disabled" />
     </div>
   </article>
 </template>

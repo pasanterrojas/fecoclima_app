@@ -148,6 +148,7 @@ export interface ForecastRisk {
 
 export interface Recommendation {
   _agent_status?: string
+  _fallback_reason?: string | null
   _run_id?: string
   _agent_name?: string
   _agent_purpose?: string

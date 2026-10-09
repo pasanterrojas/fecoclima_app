@@ -35,20 +35,21 @@ const markdown = computed(() => {
     <div class="card-body agent-body">
       <header class="agent-head">
         <div class="agent-avatar"><Bot /></div>
-        <div><div class="eyebrow"><Sparkles /> Criterio del agente</div><h2>Recomendación para productores</h2></div>
+        <div><div class="eyebrow"><Sparkles /> Ayuda para decidir</div><h2>Qué puede hacer hoy</h2></div>
         <div class="agent-actions">
           <label v-if="conditions?.length" class="chart-toggle"><input v-model="showCharts" type="checkbox"><BarChart3 /> Ver en gráfico</label>
-          <button class="btn btn-light" :disabled="loading" @click="emit('refresh')"><RefreshCw /> Actualizar recomendación</button>
+          <button class="btn btn-light" :disabled="loading" @click="emit('refresh')"><RefreshCw /> Intentar de nuevo con IA</button>
         </div>
       </header>
-      <div v-if="loading" class="agent-loading"><span class="ai-orb"/><div><b>Preparando una recomendación clara…</b><p>Estamos priorizando lo que necesita atención y las acciones de campo.</p></div></div>
+      <div v-if="loading" class="agent-loading"><span class="ai-orb"/><div><b>Consultando al agente de IA…</b><p>Si no responde, verá un resumen de respaldo identificado claramente.</p></div></div>
       <div v-else-if="error" class="notice notice-warning"><b>No fue posible actualizar la recomendación.</b><span>{{ error }}</span></div>
       <template v-else-if="recommendation">
+        <AiStatusNotice :status="recommendation._agent_status" :reason="recommendation._fallback_reason" :cached="recommendation._cached" />
         <AgentRecommendationCharts v-if="showCharts && conditions?.length" :conditions="conditions" :period="period || '72h'" />
         <MarkdownContent :content="markdown" />
       </template>
-      <div v-else class="notice"><b>Recomendación pendiente.</b><span>Pulse “Analizar con IA” para obtener las acciones prioritarias.</span></div>
-      <footer v-if="recommendation" class="agent-meta"><span>{{ recommendation._cached ? 'Recomendación reutilizada sin cambios en los datos' : 'Recomendación actualizada ahora' }}</span><span v-if="recommendation?._agent_name">{{ recommendation._agent_name }}</span></footer>
+      <div v-else class="notice"><b>Consejo pendiente.</b><span>Consulte primero cómo está su cultivo.</span></div>
+      <footer v-if="recommendation" class="agent-meta"><span v-if="recommendation._agent_status !== 'fallback'">{{ recommendation._cached ? 'Se utilizó una respuesta anterior para los mismos datos' : 'Actualizado ahora' }}</span><span v-if="recommendation._agent_status !== 'fallback' && recommendation._agent_name">{{ recommendation._agent_name }}</span></footer>
     </div>
   </article>
 </template>

@@ -4,7 +4,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
 const fields = [
   { key: 'name', label: 'Nombre', required: true },
   { key: 'code', label: 'Código interno', required: true },
-  { key: 'external_guid', label: 'GUID externo' },
+  { key: 'external_guid', label: 'GUID externo (solo API FECOCLIMA)', hint: 'Cada estación FECOCLIMA necesita su propio GUID. La credencial del proveedor se guarda únicamente en el backend.' },
   { key: 'description', label: 'Descripción', type: 'textarea' },
   { key: 'country', label: 'País' },
   { key: 'department', label: 'Departamento' },
@@ -58,7 +58,7 @@ const fields = [
     placeholder: '364.5',
     hint: 'Puede registrar metros con decimales.'
   },
-  { key: 'timezone', label: 'Zona horaria' },
+  { key: 'timezone', label: 'Zona horaria', placeholder: 'America/Asuncion', hint: 'Use el identificador de zona horaria de la estación. Por ejemplo: America/Asuncion.' },
   {
     key: 'source_type',
     label: 'Tipo de fuente',
@@ -80,6 +80,9 @@ const fields = [
     max: 1440,
     hint: 'Número entero entre 1 y 1440 minutos.'
   },
+  { key: 'integration_config', label: 'Configuración de sensores (JSON)', type: 'textarea', json: true, placeholder: '{"soil_moisture_unit":"%"}', hint: 'Opcional. Indique las unidades propias de esta estación; por ejemplo {"soil_moisture_unit":"%"} o "cbar". No incluya contraseñas.' },
+  { key: 'leaf_sensor_config', label: 'Sensor de hoja (JSON)', type: 'textarea', json: true, placeholder: '{}', hint: 'Opcional: configure aquí la interpretación del sensor de hoja para esta estación.' },
+  { key: 'available_variables', label: 'Sensores disponibles (lista JSON)', type: 'textarea', json: true, placeholder: '["temp", "humid", "rain"]', hint: 'Opcional: registre únicamente los sensores reales de esta estación; use [] si aún no los conoce.' },
   { key: 'active', label: 'Activa', type: 'checkbox' }
 ] as const
 </script>
@@ -87,7 +90,7 @@ const fields = [
 <template>
   <AdminCrudPage
     title="Estaciones"
-    description="Configure la fuente meteorológica y dibuje su zona de influencia. Cada estación usará ese polígono para consultar Sentinel-2 en Copernicus."
+    description="Agregue cada estación con su ubicación, zona horaria y fuente. Para FECOCLIMA, registre un GUID distinto por estación. El polígono propio se usa para Copernicus; Excel/CSV se importan por estación desde Datos y sincronización."
     endpoint="/stations"
     :fields="fields as any"
     :columns="[

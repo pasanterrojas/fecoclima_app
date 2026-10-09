@@ -131,7 +131,7 @@ function addContext() {
   form.contexts.push({
     station_id: stations.value[0]?.id || '',
     crop_code: crops.value[0]?.code || '',
-    planting_date: new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10),
+    planting_date: '',
     label: '',
   })
 }
@@ -153,6 +153,7 @@ async function save() {
   error.value = ''
   message.value = ''
   try {
+    if (form.contexts.some((item: any) => !item.planting_date)) throw new Error('Indique la fecha real de siembra para cada aviso configurado.')
     const body: any = {
       active: Boolean(form.active),
       timezone: String(form.timezone || '').trim(),

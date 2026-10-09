@@ -6,6 +6,9 @@ const props = withDefaults(defineProps<{
   data?: SatelliteObservation | null
   status?: SatelliteStatus | null
   recommendation?: Recommendation | null
+  alertId?: string | null
+  period?: string
+  disabled?: boolean
   refreshing?: boolean
   agentLoading?: boolean
   error?: string
@@ -153,7 +156,7 @@ function metadataValue(value: any): string {
           </span>
           <div>
             <span class="eyebrow">Copernicus Data Space · Sentinel-2 L2A</span>
-            <h3>Imagen reciente, índices espectrales y criterio IA</h3>
+            <h3>Lo que muestra la imagen del campo <InfoHint text="La imagen y sus índices son pistas de la zona, no un diagnóstico del cultivo. La fecha y las nubes afectan la confianza." /></h3>
           </div>
         </div>
         <div class="sat-actions">
@@ -330,17 +333,19 @@ function metadataValue(value: any): string {
           <div class="section-heading">
             <Sparkles />
             <div>
-              <h4>Interpretación cruzada del agente</h4>
-              <p>Relaciona Sentinel-2 con lluvia, temperatura, humedad, suelo, etapa fenológica, riesgo de enfermedades
-                y riego.
-              </p>
+              <h4>Qué puede indicar la imagen</h4>
+              <InfoHint text="Si la IA está disponible, relaciona la imagen con el clima y el cultivo. Si no, verá un resumen de respaldo claramente identificado." />
             </div>
           </div>
           <p v-if="agentError" class="notice notice-warning">{{ agentError }}</p>
           <LoadingState v-if="agentLoading" />
-          <MarkdownContent v-else-if="markdown" :content="markdown" />
+          <template v-else-if="markdown">
+            <AiStatusNotice :status="recommendation?._agent_status" :reason="recommendation?._fallback_reason" :cached="recommendation?._cached" />
+            <MarkdownContent :content="markdown" />
+          </template>
           <EmptyState v-else title="Criterio satelital pendiente"
             message="La evidencia está disponible; pulse “Reinterpretar con IA” para generar la explicación cruzada." />
+          <WidgetExplanation :alert-id="alertId" :period="period || '72h'" widget="satellite" :disabled="disabled" />
         </section>
 
 
