@@ -1,17 +1,41 @@
 <script setup lang="ts">
-import { CloudSun, Sprout, MapPinned, RadioTower, FileText, ShieldCheck } from 'lucide-vue-next'
-defineProps<{ open?: boolean }>()
-defineEmits<{ navigate: [] }>()
-const links = [
-  { to: '/fecoclima-ia', label: 'Clima', icon: CloudSun },
+import { Sprout, MapPinned, FileText, BellRing, MoreHorizontal } from 'lucide-vue-next'
+const props = defineProps<{ open?: boolean }>()
+const emit = defineEmits<{ navigate: [] }>()
+const route = useRoute()
+const moreOpen = ref(false)
+const mainLinks = [
+  { to: '/fecoclima-ia', label: 'Mi parcela', icon: Sprout },
   { to: '/fecoclima-ia/mapas', label: 'Mapas', icon: MapPinned },
-  { to: '/fecoclima-ia/fenologia', label: 'Fenología', icon: Sprout },
-  { to: '/fecoclima-ia/reportes', label: 'Reportes', icon: FileText }
 ]
+const extraLinks = [
+  { to: '/fecoclima-ia/reportes', label: 'Reportes', icon: FileText },
+  { to: '/fecoclima-ia/suscripciones', label: 'Suscribirse', icon: BellRing },
+]
+const isActive = (url: string) => url === '/fecoclima-ia' ? route.path === url : route.path.startsWith(url)
+watch(() => route.fullPath, () => { moreOpen.value = false; emit('navigate') })
+function navigate() { moreOpen.value = false; emit('navigate') }
 </script>
 <template>
-  <nav id="public-navigation" class="public-nav" :class="{ open }"><div class="container nav-list"><NuxtLink v-for="item in links" :key="item.to" :to="item.to" class="nav-item" @click="$emit('navigate')"><component :is="item.icon"/><span>{{ item.label }}</span></NuxtLink></div></nav>
+  <nav id="public-navigation" class="public-nav" :class="{ open: props.open }" aria-label="Secciones de FECOCLIMA IA">
+    <div class="nav-list">
+      <NuxtLink v-for="item in [...mainLinks, ...extraLinks]" :key="item.to" :to="item.to" class="nav-item" :class="{ selected: isActive(item.to) }" :aria-current="isActive(item.to) ? 'page' : undefined" @click="navigate">
+        <component :is="item.icon" aria-hidden="true"/><span>{{ item.label }}</span>
+      </NuxtLink>
+    </div>
+  </nav>
+  <nav class="mobile-dock" aria-label="Navegación móvil">
+    <NuxtLink v-for="item in mainLinks" :key="item.to" :to="item.to" class="dock-item" :class="{ selected: isActive(item.to) }" :aria-current="isActive(item.to) ? 'page' : undefined" @click="navigate">
+      <component :is="item.icon" aria-hidden="true"/><span>{{ item.label }}</span>
+    </NuxtLink>
+    <button class="dock-item" type="button" :class="{ selected: moreOpen || extraLinks.some(item => isActive(item.to)) }" :aria-expanded="moreOpen" aria-controls="mobile-more-menu" @click="moreOpen = !moreOpen"><MoreHorizontal aria-hidden="true"/><span>Más</span></button>
+    <div v-if="moreOpen" id="mobile-more-menu" class="mobile-more" role="group" aria-label="Más opciones">
+      <NuxtLink v-for="item in extraLinks" :key="item.to" :to="item.to" @click="navigate"><component :is="item.icon" aria-hidden="true" /> {{ item.label }}</NuxtLink>
+    </div>
+  </nav>
 </template>
 <style scoped>
-.public-nav{background:var(--fc-primary);color:#fff}.nav-list{min-height:122px;display:flex;align-items:center;justify-content:center;gap:clamp(18px,4vw,60px)}.nav-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-width:88px;min-height:82px;padding:8px;border-radius:12px;font-size:.9rem;text-transform:uppercase}.nav-item svg{width:38px;height:38px;stroke-width:2.4}.nav-item:hover,.router-link-active{color:#bde8ff;background:rgba(255,255,255,.07)}@media(max-width:820px){.public-nav{display:none}.public-nav.open{display:block}.nav-list{min-height:auto;padding:12px 0 max(12px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.nav-item{min-width:0;min-height:52px;padding:12px;flex-direction:row;justify-content:flex-start;background:rgba(255,255,255,.07);border-radius:10px;text-transform:none}.nav-item svg{width:24px;height:24px;flex:0 0 24px}}@media(max-width:380px){.nav-list{grid-template-columns:1fr}.nav-item{min-height:48px}}
+.public-nav{min-width:0}.nav-list{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.nav-item{display:inline-flex;align-items:center;gap:8px;padding:11px 14px;min-height:44px;color:#d7eaf9;font-size:.86rem;font-weight:650;border-radius:13px;transition:background .15s ease,color .15s ease}.nav-item svg{width:18px;height:18px;flex:0 0 18px}.nav-item:hover{background:#ffffff15;color:#fff}.nav-item.selected{background:#ffffff25;color:#fff;box-shadow:inset 0 0 0 1px #ffffff1c}.mobile-dock{display:none}
+@media(max-width:1020px){.public-nav{display:none;position:absolute;top:100%;left:0;right:0;background:var(--fc-primary-strong);box-shadow:0 15px 24px #123b5740;z-index:9}.public-nav.open{display:block}.nav-list{width:min(calc(100% - 24px),var(--fc-max));margin:auto;padding:12px 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.nav-item{justify-content:center;text-align:center}}
+@media(max-width:720px){.nav-list{grid-template-columns:repeat(2,minmax(0,1fr))}.mobile-dock{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:fixed;bottom:0;left:0;right:0;z-index:95;min-height:70px;padding:6px 4px max(7px,env(safe-area-inset-bottom));border-top:1px solid #d7e5ef;background:#fffefaee;backdrop-filter:blur(18px);box-shadow:0 -7px 25px #13426418}.dock-item{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:3px;min-width:0;min-height:51px;padding:6px 1px;border:0;border-radius:12px;background:transparent;color:var(--fc-text-muted);font-size:.62rem;font-weight:750;text-align:center}.dock-item svg{width:21px;height:21px}.dock-item.selected{color:var(--fc-primary);background:#e8f2fa}.mobile-more{position:absolute;right:8px;bottom:calc(100% + 9px);display:flex;flex-direction:column;gap:3px;min-width:184px;padding:7px;border:1px solid var(--fc-border);border-radius:14px;background:#fff;box-shadow:0 12px 30px #102f4c35}.mobile-more a{display:flex;align-items:center;gap:10px;padding:13px;border-radius:9px;font-weight:700;color:var(--fc-primary)}.mobile-more a:hover{background:#ecf5fb}.mobile-more svg{width:19px;height:19px}}
 </style>

@@ -16,7 +16,12 @@ import {
   Trash2,
 } from 'lucide-vue-next'
 
-definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
+const props = defineProps<{ detailId?: string }>()
+const settingsTab = ref(false)
+const selectedContextIndex = ref(-1)
+const confirmDelete = ref(false)
+const contextKey = (item: any) => `${item.station_id}__${item.crop_code}__${item.planting_date}`
+const editableContexts = computed(() => form.contexts.map((item: any,index: number)=>({item,index})).filter((entry: any)=>entry.index === selectedContextIndex.value))
 
 const { request } = useApi()
 const loading = ref(true)
@@ -109,6 +114,11 @@ async function load() {
       telegram_minimum_level: settings.telegram_minimum_level || 'MODERADA',
       contexts: Array.isArray(settings.contexts) ? settings.contexts.map((item: any) => ({ ...item })) : [],
     })
+    if (props.detailId === 'nuevo') { addContext(); selectedContextIndex.value = form.contexts.length - 1 }
+    else if (props.detailId) {
+      selectedContextIndex.value = form.contexts.findIndex((item: any) => contextKey(item) === props.detailId)
+      if (selectedContextIndex.value < 0) error.value = 'Este aviso ya no está disponible. Regrese al listado.'
+    }
     recipientsText.value = (settings.recipients || []).join('\n')
     hasTelegramToken.value = Boolean(settings.has_telegram_token)
     telegramTokenMasked.value = settings.telegram_token_masked || ''
@@ -136,8 +146,15 @@ function addContext() {
   })
 }
 
-function removeContext(index: number) {
-  form.contexts.splice(index, 1)
+async function removeContext() {
+  confirmDelete.value = false
+  const index = selectedContextIndex.value
+  const removed = form.contexts.splice(index, 1)[0]
+  if (!removed) return
+  const wasActive = form.active
+  if (!form.contexts.length) form.active = false
+  const success = await save({ removed: true })
+  if (!success) { form.contexts.splice(index, 0, removed); form.active = wasActive }
 }
 
 function cropName(code: string): string {
@@ -148,18 +165,20 @@ function stationName(id: string): string {
   return stations.value.find(item => item.id === id)?.name || id
 }
 
-async function save() {
+async function save(options?: { removed?: boolean } | Event) {
   saving.value = true
   error.value = ''
   message.value = ''
   try {
     if (form.contexts.some((item: any) => !item.planting_date)) throw new Error('Indique la fecha real de siembra para cada aviso configurado.')
+    const keys = form.contexts.map(contextKey)
+    if (new Set(keys).size !== keys.length) throw new Error('Ya existe un aviso para esa estación, cultivo y fecha de siembra. Edite el aviso existente.')
     const body: any = {
       active: Boolean(form.active),
       timezone: String(form.timezone || '').trim(),
       send_hour: normalizeHour(form.send_hour),
       email_enabled: Boolean(form.email_enabled),
-      recipients: recipients(),
+      recipients: [],
       telegram_enabled: Boolean(form.telegram_enabled),
       telegram_bot_token: normalizeTelegramToken(telegramBotToken.value),
       telegram_minimum_level: form.telegram_minimum_level === 'GRAVE' ? 'GRAVE' : 'MODERADA',
@@ -171,11 +190,18 @@ async function save() {
       })),
     }
     await request('/notifications/settings', { method: 'PUT', body })
+    if (options && 'removed' in options && options.removed) { await navigateTo('/fecoclima-ia/admin/notificaciones'); return true }
     telegramBotToken.value = ''
     message.value = 'Configuración guardada. Telegram trabaja por sincronización automática; no necesita webhook ni Chat ID.'
+    if (props.detailId && selectedContextIndex.value >= 0) {
+      const nextId = contextKey(form.contexts[selectedContextIndex.value])
+      if (props.detailId !== nextId) { await navigateTo(`/fecoclima-ia/admin/notificaciones/${nextId}`); return true }
+    }
     await load()
+    return true
   } catch (exception: any) {
     error.value = apiError(exception)
+    return false
   } finally {
     saving.value = false
   }
@@ -267,65 +293,68 @@ onMounted(load)
 
 <template>
   <section>
+    <NuxtLink v-if="props.detailId" to="/fecoclima-ia/admin/notificaciones" class="back-link">← Volver a avisos</NuxtLink>
     <AdminPageHeader
-      title="Avisos diarios a productores"
+      :title="props.detailId ? (form.contexts[selectedContextIndex]?.label || 'Configurar aviso') : 'Aviso a productores'"
       description="Configure un análisis automático de las últimas 72 horas y distribúyalo por correo o Telegram cuando exista una alerta moderada o grave."
     >
       <button class="btn btn-light" :disabled="loading" @click="load"><RefreshCw /> Actualizar</button>
     </AdminPageHeader>
 
-    <div class="role-grid">
+    <details v-if="!props.detailId" class="form-help"><summary>Agentes y documentación del aviso</summary><div class="role-grid">
       <NuxtLink class="role-card" to="/fecoclima-ia/admin/agentes"><Bot /><div><b>Agente del boletín</b><span>Configure el propósito “Boletín automático de 72 horas” por cultivo.</span></div></NuxtLink>
       <NuxtLink class="role-card" to="/fecoclima-ia/admin/conocimiento"><FileText /><div><b>Fuentes documentales</b><span>Los PDF indexados por cultivo también respaldan el boletín.</span></div></NuxtLink>
-    </div>
+    </div></details>
 
     <div v-if="message" class="notice success-message"><CheckCircle2 /> {{ message }}</div>
     <ErrorState v-if="error" :message="error" @retry="load" />
     <LoadingState v-if="loading" />
 
-    <form v-else class="stack" @submit.prevent="save">
-      <article class="card">
+    <nav v-if="!props.detailId" class="detail-tabs"><button :class="{active:!settingsTab}" @click="settingsTab=false">Avisos</button><button :class="{active:settingsTab}" @click="settingsTab=true">Canales y horario</button></nav>
+    <article v-if="!loading && !props.detailId && !settingsTab" class="card card-body"><div class="row-between"><h2 class="section-title">Avisos configurados</h2><NuxtLink class="btn btn-primary" to="/fecoclima-ia/admin/notificaciones/nuevo">Agregar aviso</NuxtLink></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Estación</th><th>Cultivo</th><th>Siembra</th><th>Acciones</th></tr></thead><tbody><tr v-for="item in form.contexts" :key="contextKey(item)"><td><NuxtLink class="record-link" :to="`/fecoclima-ia/admin/notificaciones/${contextKey(item)}`">{{ item.label || `${cropName(item.crop_code)} · ${stationName(item.station_id)}` }}</NuxtLink></td><td>{{ stationName(item.station_id) }}</td><td>{{ cropName(item.crop_code) }}</td><td>{{ item.planting_date }}</td><td><NuxtLink class="btn btn-light" :to="`/fecoclima-ia/admin/notificaciones/${contextKey(item)}`">Ver detalle</NuxtLink></td></tr><tr v-if="!form.contexts.length"><td colspan="5">Todavía no hay avisos configurados.</td></tr></tbody></table></div></article>
+    <form v-if="!loading && (settingsTab || selectedContextIndex >= 0)" class="stack" @submit.prevent="save">
+      <article v-if="!props.detailId" class="card">
         <div class="card-body">
           <div class="row-between section-head">
             <div><h2>Programación diaria</h2><p>El scheduler revisa la hora configurada y envía una sola vez al día cuando el riesgo alcanza el umbral.</p></div>
             <label class="switch-row"><input v-model="form.active" type="checkbox"><span>Servicio automático activo</span></label>
           </div>
           <div class="form-grid">
-            <label><span class="label">Zona horaria</span><input v-model="form.timezone" class="input" placeholder="America/Asuncion"><small>Use una zona IANA válida.</small></label>
-            <label><span class="label">Hora local de envío</span><input v-model="form.send_hour" class="input" type="number" min="0" max="23" step="1"><small>0–23. Ejemplo: 6 corresponde a las 06:00.</small></label>
+            <label><span class="label">Zona horaria</span><select v-model="form.timezone" class="select"><option value="America/Asuncion">Paraguay · Asunción</option><option value="America/Costa_Rica">Costa Rica</option><option value="UTC">UTC</option></select><small>Use una zona IANA válida.</small></label>
+            <label><span class="label">Hora local de envío</span><select v-model="form.send_hour" class="select"><option v-for="hour in 24" :key="hour" :value="hour-1">{{ String(hour-1).padStart(2,'0') }}:00</option></select><small>0–23. Ejemplo: 6 corresponde a las 06:00.</small></label>
           </div>
           <div class="status-strip"><span><Clock3 /> Última ejecución: <b>{{ formatDate(lastRunAt) }}</b></span><span>Resultado: <b>{{ lastResult || 'Sin ejecutar' }}</b></span></div>
         </div>
       </article>
 
-      <article class="card">
+      <article v-if="props.detailId" class="card">
         <div class="card-body">
-          <div class="row-between section-head"><div><h2>Estaciones y cultivos evaluados</h2><p>Cada contexto usa estación, fecha de siembra, reglas, pronóstico, Copernicus y documentos del cultivo.</p></div><button type="button" class="btn btn-light" @click="addContext"><Plus /> Agregar contexto</button></div>
+          <div class="row-between section-head"><div><h2>Datos del aviso</h2><p>Cada contexto usa estación, fecha de siembra, reglas, pronóstico, Copernicus y documentos del cultivo.</p></div></div>
           <div class="contexts">
-            <div v-for="(item, index) in form.contexts" :key="index" class="context-row">
+            <div v-for="{item,index} in editableContexts" :key="index" class="context-row">
               <label><span class="label">Nombre para el productor</span><input v-model="item.label" class="input" :placeholder="`${cropName(item.crop_code)} · ${stationName(item.station_id)}`"></label>
               <label><span class="label">Estación</span><select v-model="item.station_id" class="select" required><option value="">Seleccione</option><option v-for="station in stations" :key="station.id" :value="station.id">{{ station.name }}</option></select></label>
               <label><span class="label">Cultivo</span><select v-model="item.crop_code" class="select" required><option value="">Seleccione</option><option v-for="crop in crops" :key="crop.id" :value="crop.code">{{ crop.name }}</option></select></label>
               <label><span class="label">Fecha de siembra</span><input v-model="item.planting_date" class="input" type="date" required></label>
-              <button type="button" class="icon-btn danger" title="Eliminar contexto" @click="removeContext(index)"><Trash2 /></button>
+              <button v-if="props.detailId !== 'nuevo'" type="button" class="icon-btn danger" title="Eliminar aviso" :disabled="saving" @click="confirmDelete=true"><Trash2 /></button>
             </div>
             <div v-if="!form.contexts.length" class="empty-inline">Agregue al menos un contexto para activar el envío automático.</div>
           </div>
         </div>
       </article>
 
-      <div class="channel-grid">
+      <div v-if="!props.detailId" class="channel-grid">
         <article class="card channel-card">
           <div class="card-body">
             <div class="channel-title"><Mail /><div><h2>Correo electrónico</h2><p>Se envía una versión HTML y otra en texto simple.</p></div><label class="switch-row"><input v-model="form.email_enabled" type="checkbox"><span>Activo</span></label></div>
-            <label><span class="label">Destinatarios</span><textarea v-model="recipientsText" class="textarea" rows="7" placeholder="productor1@correo.com&#10;productor2@correo.com"></textarea><small>Separe direcciones por línea, coma o punto y coma.</small></label>
+            <div class="notice"><b>Destinatarios de la libreta de direcciones</b><p class="small muted">Solo se enviarán boletines a correos confirmados y activos que coincidan con el cultivo y la estación configurados en cada aviso.</p><NuxtLink to="/fecoclima-ia/admin/libretadedirecciones" class="btn btn-light">Ver suscripciones</NuxtLink></div>
             <button type="button" class="btn btn-light" :disabled="actionLoading !== ''" @click="runAction('email', '/notifications/test-email', 'Prueba de correo procesada.')"><Send /> {{ actionLoading === 'email' ? 'Enviando…' : 'Probar correo' }}</button>
           </div>
         </article>
 
         <article class="card channel-card telegram-card">
           <div class="card-body">
-            <div class="channel-title"><MessageCircle /><div><h2>Telegram</h2><p>Integración simple por suscripción. No utiliza webhook ni Chat ID manual.</p></div><label class="switch-row"><input v-model="form.telegram_enabled" type="checkbox"><span>Activo</span></label></div>
+            <div class="channel-title"><MessageCircle /><div><h2>Telegram</h2><p>El bot recibe /start. Para alertas por cultivo debe vincularse después de confirmar correo.</p></div><label class="switch-row"><input v-model="form.telegram_enabled" type="checkbox"><span>Activo</span></label></div>
 
             <label><span class="label">Token del bot</span><input v-model="telegramBotToken" class="input" type="password" autocomplete="new-password" :placeholder="hasTelegramToken ? `Configurado: ${telegramTokenMasked}` : '123456789:AA...' "><small>Créelo en @BotFather, copie el token completo y guarde. Si cambia el token, se eliminan las suscripciones del bot anterior.</small></label>
 
@@ -339,10 +368,10 @@ onMounted(load)
             <div class="telegram-actions">
               <button type="button" class="btn btn-light" :disabled="actionLoading !== '' || !hasTelegramToken" @click="verifyTelegram"><Bot /> {{ actionLoading === 'verify' ? 'Verificando…' : 'Verificar bot' }}</button>
               <button type="button" class="btn btn-light" :disabled="actionLoading !== '' || !hasTelegramToken" @click="syncSubscribers"><RefreshCw /> {{ actionLoading === 'sync' ? 'Sincronizando…' : 'Sincronizar suscriptores' }}</button>
-              <button type="button" class="btn btn-light" :disabled="actionLoading !== '' || !hasTelegramToken" @click="runAction('telegram', '/notifications/test-telegram', 'Mensaje de prueba enviado a todos los suscriptores activos.')"><Send /> {{ actionLoading === 'telegram' ? 'Enviando…' : 'Probar Telegram' }}</button>
+              <button type="button" class="btn btn-light" :disabled="actionLoading !== '' || !hasTelegramToken" @click="runAction('telegram', '/notifications/test-telegram', 'Bot verificado. No se enviaron mensajes a productores.')"><Send /> {{ actionLoading === 'telegram' ? 'Enviando…' : 'Verificar Telegram sin enviar' }}</button>
             </div>
 
-            <div class="subscriber-summary"><b>{{ telegramSubscribers.filter(item => item.active).length }}</b><span>suscriptores activos</span></div>
+            <div class="subscriber-summary"><b>{{ telegramSubscribers.filter(item => item.active).length }}</b><span>chats activos del bot</span></div><p class="small muted">Los boletines y eventos solo se enviarán a direcciones confirmadas y vinculadas a Telegram desde Suscripciones.</p>
             <div v-if="telegramSubscribers.length" class="subscriber-list">
               <article v-for="item in telegramSubscribers" :key="item.id" :class="{ inactive: !item.active }"><div><b>{{ item.title || item.chat_id }}</b><span>{{ item.chat_type || 'chat' }} · {{ item.chat_id }}</span><small>{{ item.active ? `Activo desde ${formatDate(item.subscribed_at)}` : `Inactivo desde ${formatDate(item.unsubscribed_at)}` }}</small><small v-if="item.last_error" class="error-text">{{ item.last_error }}</small></div><button v-if="item.active" type="button" class="icon-btn danger" title="Desactivar suscripción" :disabled="actionLoading !== ''" @click="deactivateSubscriber(item)"><Trash2 /></button></article>
             </div>
@@ -352,7 +381,7 @@ onMounted(load)
         </article>
       </div>
 
-      <article class="card telegram-guide">
+      <details v-if="!props.detailId" class="card telegram-guide"><summary class="card-body">Ayuda para conectar Telegram</summary>
         <div class="card-body">
           <div class="guide-title"><Bot /><div><h2>Conexión desde cero</h2><p>El flujo completo tiene cinco pasos y funciona tanto en localhost como en producción.</p></div></div>
           <ol>
@@ -364,14 +393,15 @@ onMounted(load)
           </ol>
           <p class="guide-note">Cada persona puede cancelar con <code>/stop</code> y consultar su estado con <code>/status</code>.</p>
         </div>
-      </article>
+      </details>
 
-      <div class="bottom-actions"><button class="btn btn-primary" :disabled="saving"><Save /> {{ saving ? 'Guardando…' : 'Guardar configuración' }}</button><button type="button" class="btn ai-send" :disabled="actionLoading !== '' || saving" @click="runAction('digest', '/notifications/run-now', 'Boletín agregado a la cola del worker.')"><BellRing /> {{ actionLoading === 'digest' ? 'Preparando…' : 'Generar y enviar ahora' }}</button></div>
+      <div class="bottom-actions"><button class="btn btn-primary" :disabled="saving"><Save /> {{ saving ? 'Guardando…' : 'Guardar configuración' }}</button><button v-if="!props.detailId" type="button" class="btn ai-send" :disabled="actionLoading !== '' || saving" @click="runAction('digest', '/notifications/run-now', 'Boletín agregado a la cola del worker.')"><BellRing /> {{ actionLoading === 'digest' ? 'Preparando…' : 'Generar y enviar ahora' }}</button></div>
     </form>
 
     <article v-if="!loading" class="card logs-card">
       <div class="card-body"><div class="row-between section-head"><div><h2>Historial de envíos</h2><p>Resultados del boletín automático y de las pruebas reales.</p></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Operación</th><th>Estado</th><th>Duración</th><th>Resultado</th></tr></thead><tbody><tr v-for="row in logs" :key="row.id"><td>{{ formatDate(row.created_at || row.started_at) }}</td><td>{{ row.operation }}</td><td><span class="badge" :class="row.status === 'COMPLETED' ? 'badge-success' : row.status === 'FAILED' ? 'badge-danger' : 'badge-warning'">{{ row.status }}</span></td><td>{{ row.duration_ms != null ? `${row.duration_ms} ms` : '—' }}</td><td><span v-if="row.error_message" class="error-text">{{ row.error_message }}</span><span v-else>{{ row.records_created || 0 }} contextos</span></td></tr><tr v-if="!logs.length"><td colspan="5">Aún no hay ejecuciones registradas.</td></tr></tbody></table></div></div>
     </article>
+    <ConfirmationModal :open="confirmDelete" title="Eliminar aviso" message="Se quitará este aviso. Si es el último, el servicio automático quedará desactivado." @confirm="removeContext" @cancel="confirmDelete=false" />
   </section>
 </template>
 

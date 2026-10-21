@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { weatherStationIconUrl } from '~/utils/stations'
 import { Crosshair, Image, Layers3, Maximize2, ZoomIn, ZoomOut } from 'lucide-vue-next'
 
 type Coordinate = [number, number]
@@ -25,7 +26,6 @@ const center = ref<Coordinate>([-57.6359, -25.3007])
 const opacity = ref(props.defaultOpacity)
 const showImage = ref(true)
 const isPanning = ref(false)
-let resizeObserver: ResizeObserver | null = null
 let pointerState: { id: number; x: number; y: number; worldX: number; worldY: number } | null = null
 
 function geometryObject(): Record<string, any> | null {
@@ -178,19 +178,23 @@ function onPointerUp(event: PointerEvent) {
 watch(() => props.geometry, () => nextTick(fitGeometry), { deep: true, immediate: true })
 watch(() => props.defaultOpacity, value => { opacity.value = value })
 
-onMounted(() => {
-  if (!mapRef.value) return
+const stopObservingMap = watch(mapRef, (element, _previous, onCleanup) => {
+  if (!element) return
   const update = () => {
-    width.value = mapRef.value?.clientWidth || 900
-    height.value = mapRef.value?.clientHeight || 560
+    width.value = element.clientWidth || 900
+    height.value = element.clientHeight || 560
   }
   update()
-  resizeObserver = new ResizeObserver(() => { update(); fitGeometry() })
-  resizeObserver.observe(mapRef.value)
+  const observer = new ResizeObserver(() => { update(); fitGeometry() })
+  observer.observe(element)
+  onCleanup(() => observer.disconnect())
   fitGeometry()
-})
+}, { flush: 'post' })
 
-onBeforeUnmount(() => resizeObserver?.disconnect())
+onBeforeUnmount(() => {
+  stopObservingMap()
+  pointerState = null
+})
 </script>
 
 <template>
@@ -239,8 +243,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
           class="polygon"
         />
         <template v-if="stationScreen">
-          <circle :cx="stationScreen.x" :cy="stationScreen.y" r="10" class="station-halo" />
-          <circle :cx="stationScreen.x" :cy="stationScreen.y" r="4" class="station-dot" />
+          <image :href="weatherStationIconUrl" :x="(stationScreen.x)-20" :y="(stationScreen.y)-50" width="40" height="50"><title>Estación meteorológica</title></image>
         </template>
       </svg>
       <div class="zoom-controls">

@@ -14,17 +14,12 @@ export const useAuthStore = defineStore('auth', () => {
     pendingLoad = (async () => {
       loading.value = true
       try {
-        user.value = await request<User>('/auth/me')
-      } catch (exception: any) {
-        const status = Number(exception?.statusCode || exception?.status || exception?.response?.status || 0)
-        if (import.meta.client && status === 401) {
-          try {
-            user.value = await request<User>('/auth/refresh', { method: 'POST' })
-            return
-          } catch {
-            // La sesión realmente expiró o fue revocada.
-          }
+        const session = await request<{ user: User | null; refresh_available: boolean }>('/auth/session')
+        user.value = session.user
+        if (!user.value && session.refresh_available) {
+          user.value = await request<User>('/auth/refresh', { method: 'POST' })
         }
+      } catch (exception: any) {
         user.value = null
       } finally {
         loading.value = false

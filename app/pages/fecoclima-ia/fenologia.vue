@@ -15,7 +15,7 @@ const now = new Date()
 const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
 onMounted(async () => {
-  [stations.value, crops.value] = await Promise.all([request('/public/stations'), request('/public/crops')])
+  [stations.value, crops.value] = await Promise.all([request<Station[]>('/public/stations'), request<Crop[]>('/public/crops')])
   if (stations.value[0]) form.station_id = stations.value[0].id
   if (!crops.value.some(item => item.code === form.crop_code) && crops.value[0]) form.crop_code = crops.value[0].code
 })

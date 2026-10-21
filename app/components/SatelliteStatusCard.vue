@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { widgetSummary } from '~/utils/widgetText'
 import { BrainCircuit, Cloud, ExternalLink, Image, MapPinned, RefreshCw, Satellite, Sparkles } from 'lucide-vue-next'
 import type { Recommendation, SatelliteObservation, SatelliteSignal, SatelliteStatus } from '~/types/api'
 
@@ -36,6 +37,7 @@ const indexDefinitions: Record<string, { label: string; meaning: string }> = {
   ndre: { label: 'NDRE', meaning: 'Clorofila y estrés en etapas avanzadas' },
   gndvi: { label: 'GNDVI', meaning: 'Actividad fotosintética sensible al verde' },
   nbr: { label: 'NBR', meaning: 'Cambios severos y alteración de cobertura' },
+  recl: { label: 'ReCl', meaning: 'Clorofila de borde rojo · B07/B05 − 1' },
   msi: { label: 'MSI', meaning: 'Estrés hídrico relativo; mayor puede indicar sequedad' },
 }
 
@@ -118,7 +120,7 @@ const sceneMetadataRows = computed(() => {
 })
 
 watch(availableStatistics, keys => {
-  if (keys.length && !keys.includes(selectedStatistic.value)) selectedStatistic.value = keys[0]
+  if (keys.length && !keys.includes(selectedStatistic.value)) selectedStatistic.value = keys[0]!
 }, { immediate: true })
 watch(visualLayers, rows => {
   const available = rows.filter(item => item.url).map(item => item.key)
@@ -191,7 +193,7 @@ function metadataValue(value: any): string {
             <div v-else class="image-empty">
               <Image />
               <b>La capa seleccionada todavía no está procesada</b>
-              <span>Actualice la escena para generar color real y los nueve mapas espectrales desde la misma
+              <span>Actualice la escena para generar color real y los mapas espectrales disponibles desde la misma
                 adquisición.</span>
             </div>
             <div class="image-meta">
@@ -341,7 +343,7 @@ function metadataValue(value: any): string {
           <LoadingState v-if="agentLoading" />
           <template v-else-if="markdown">
             <AiStatusNotice :status="recommendation?._agent_status" :reason="recommendation?._fallback_reason" :cached="recommendation?._cached" />
-            <MarkdownContent :content="markdown" />
+            <p class="widget-summary">{{ widgetSummary(markdown) }}</p>
           </template>
           <EmptyState v-else title="Criterio satelital pendiente"
             message="La evidencia está disponible; pulse “Reinterpretar con IA” para generar la explicación cruzada." />

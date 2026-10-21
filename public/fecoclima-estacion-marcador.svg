@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 124" width="100" height="124" fill="none" role="img" aria-label="Ubicación de una estación meteorológica">
+<defs>
+<linearGradient id="marker" x1="10" y1="3" x2="90" y2="107" gradientUnits="userSpaceOnUse"><stop stop-color="#248BCE"/><stop offset="1" stop-color="#125B94"/></linearGradient>
+</defs>
+<path d="M50 3C24.3 3 6 21.3 6 45.9 6 77 36 107 50 120 64 107 94 77 94 45.9 94 21.3 75.7 3 50 3Z" fill="url(#marker)" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>
+<circle cx="50" cy="46" r="35.5" fill="#FFFFFF"/>
+<g transform="translate(17.8 13.9) scale(.65)" color="#155A88">
+<!-- Weather vane: left-facing arrow, tail, and central pivot -->
+<path d="M9 21 24 12v6h23" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M47 18 62 11v20L47 24Z" fill="currentColor"/>
+<circle cx="42" cy="21" r="3.8" fill="currentColor"/>
+<path d="M42 25v13" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
+<!-- Main mast and cross arm -->
+<path d="M45 38v49M45 38h31" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+<!-- Cup anemometer on right -->
+<path d="M76 34V22m0 0-13 10m13-10 12 10" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+<circle cx="76" cy="22" r="4.5" fill="currentColor"/>
+<path d="M68 10h16c-.5 7-4 10-8 10s-7.5-3-8-10Z" fill="currentColor"/>
+<path d="M54 34c1-7 5-10 11-8l3 11c-6 3-11 2-14-3Z" fill="currentColor"/>
+<path d="M84 26c6-2 10 1 11 8-3 5-8 6-14 3Z" fill="currentColor"/>
+<!-- Slatted meteorological sensor shield -->
+<path d="M34 47h22l-2.5 6H36.5Z" fill="currentColor"/>
+<path d="M35.5 55h19l-2 4.5h-15Z" fill="currentColor"/>
+<path d="M37 62h16l-2 4h-12Z" fill="currentColor"/>
+<path d="M39 69h12v3.5H39Z" fill="currentColor"/>
+<!-- Solid footing -->
+<path d="M38 87h14M45 75v12" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+</g>
+</svg>

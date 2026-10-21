@@ -3,6 +3,7 @@ import { CloudDownload, FileSpreadsheet, PlugZap, Upload } from 'lucide-vue-next
 definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
 useSeoMeta({ title: 'Datos y sincronización' })
 const { request } = useApi()
+const route = useRoute()
 const stations = ref<any[]>([])
 const stationId = ref('')
 const dateFrom = ref(new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
@@ -17,7 +18,8 @@ const error = ref('')
 onMounted(async () => {
   const response: any = await request('/stations', { query: { limit: 250 } })
   stations.value = response.items || []
-  stationId.value = stations.value[0]?.id || ''
+  const requested = String(route.query.station || '')
+  stationId.value = stations.value.some(station => station.id === requested) ? requested : stations.value[0]?.id || ''
 })
 function selectFile(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0] || null

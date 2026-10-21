@@ -1,0 +1,19 @@
+<script setup lang="ts">
+import type { SoilTension } from '~/types/plots'
+defineProps<{ tension?: SoilTension | null; station: string; sampledAt?: string }>()
+</script>
+<template>
+  <article v-if="tension" class="panel tension-card">
+    <div><span class="eyebrow">Tensión del agua en el suelo · {{ station }}</span><h2>{{ tension.value }} {{ tension.unit }}</h2><small>Última lectura · {{ sampledAt }}</small><h3>{{ tension.label }}</h3><p>{{ tension.description }}</p></div>
+    <div class="tension-guide"><div class="tension-guide-heading"><span class="eyebrow">GUÍA RÁPIDA PARA CAMPO</span><InfoHint text="Guía orientativa: la interpretación depende del suelo, cultivo y profundidad del sensor. Los porcentajes de humedad se muestran por separado." /></div><h3>Interpretación de tensión de humedad</h3>
+      <div class="tension-bar" role="meter" aria-label="Tensión de humedad del suelo en centibares" :aria-valuenow="tension.value" :aria-valuemin="0" :aria-valuemax="200"><b :style="{ left: `${tension.position_pct}%` }">{{ tension.value }} ▼</b></div>
+      <div class="tension-labels"><span>0</span><span>10</span><span>30</span><span>60</span><span>100</span><span>200 cb</span></div>
+      <div class="tension-bands"><section v-for="(band,index) in tension.bands" :key="band.min" :class="{current:index === tension.band_index}" :style="{borderLeftColor:band.color}"><b>{{ band.min }} a {{ band.max }} cb</b><strong>{{ band.label }}</strong><small>{{ band.description }}</small></section></div>
+    </div>
+  </article>
+  <article v-else class="panel tension-card unavailable"><div><span class="eyebrow">Tensión del suelo · {{ station }}</span><h3>Sin lectura disponible en cb</h3><p>El sensor está configurado en centibares. Actualice las lecturas de la estación para mostrar su posición en la escala.</p></div><div class="tension-guide"><div class="tension-bar" aria-hidden="true"/><div class="tension-labels"><span>0</span><span>10</span><span>30</span><span>60</span><span>100</span><span>200 cb</span></div><small>No se marca un valor cuando no existe una medición válida.</small></div></article>
+</template>
+<style scoped>
+.tension-guide-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.tension-guide-heading :deep(.info-hint){margin-left:0;flex-shrink:0}.tension-guide-heading :deep(.info-text){left:auto;right:0}
+.tension-card{display:grid;grid-template-columns:1fr 3fr;gap:24px;margin:20px 0;padding:24px}.tension-card h2,.tension-card h3{margin:8px 0;color:var(--fc-primary)}.tension-card p,.tension-card small{color:var(--fc-text-muted)}.tension-guide{border-left:1px solid var(--fc-border);padding-left:24px}.tension-bar{position:relative;height:16px;margin-top:32px;border-radius:12px;background:linear-gradient(to right,#48a6d5 0% 5%,#49ba73 5% 15%,#f2cb49 15% 30%,#f49a40 30% 50%,#dc5953 50% 100%)}.tension-bar>b{position:absolute;top:-24px;transform:translateX(-50%);color:#14364c;font-size:.8rem}.tension-labels{position:relative;height:16px;font-size:.7rem;color:var(--fc-text-muted);margin:8px 0 16px}.tension-labels span{position:absolute;transform:translateX(-50%)}.tension-labels span:nth-child(1){left:0;transform:none}.tension-labels span:nth-child(2){left:5%}.tension-labels span:nth-child(3){left:15%}.tension-labels span:nth-child(4){left:30%}.tension-labels span:nth-child(5){left:50%}.tension-labels span:nth-child(6){right:0;transform:none}.tension-bands{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}.tension-bands section{padding:10px;border:1px solid var(--fc-border);border-left:6px solid;border-radius:9px}.tension-bands b,.tension-bands strong,.tension-bands small{display:block;font-size:.75rem;margin:4px 0}.tension-bands .current{outline:2px solid var(--fc-primary)}@media(max-width:900px){.tension-card{grid-template-columns:1fr}.tension-guide{border:0;padding:0}.tension-bands{grid-template-columns:repeat(2,1fr)}}
+</style>

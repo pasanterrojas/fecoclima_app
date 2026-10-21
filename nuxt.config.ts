@@ -7,6 +7,27 @@ export default defineNuxtConfig({
 
   modules: ['@pinia/nuxt'],
 
+  hooks: {
+    'pages:extend'(pages) {
+      const addAdminAliases = (entries: typeof pages) => {
+        for (const page of entries) {
+          if (page.path.startsWith('/fecoclima-ia/admin')) {
+            const shortPath = page.path.replace('/fecoclima-ia/admin', '/admin')
+            page.alias = [...new Set([
+              ...(Array.isArray(page.alias) ? page.alias : page.alias ? [page.alias] : []),
+              shortPath,
+              ...(shortPath.startsWith('/admin/estaciones')
+                ? [shortPath.replace('/admin/estaciones', '/admin/estacionesmeteorologicas')]
+                : [])
+            ])]
+          }
+          if (page.children) addAdminAliases(page.children)
+        }
+      }
+      addAdminAliases(pages)
+    }
+  },
+
   css: ['~/assets/css/main.css'],
 
   app: {
@@ -61,7 +82,9 @@ export default defineNuxtConfig({
 
       csrfCookieName:
         process.env.NUXT_PUBLIC_CSRF_COOKIE_NAME ||
-        'csrf_token'
+        'csrf_token',
+
+      mapTilerKey: process.env.NUXT_PUBLIC_MAPTILER_KEY || ''
     }
   },
 

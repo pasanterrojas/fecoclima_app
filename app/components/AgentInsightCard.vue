@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { widgetSummary } from '~/utils/widgetText'
 import { BarChart3, Bot, RefreshCw, Sparkles } from 'lucide-vue-next'
 import type { AlertCondition, Recommendation } from '~/types/api'
 
@@ -46,7 +47,7 @@ const markdown = computed(() => {
       <template v-else-if="recommendation">
         <AiStatusNotice :status="recommendation._agent_status" :reason="recommendation._fallback_reason" :cached="recommendation._cached" />
         <AgentRecommendationCharts v-if="showCharts && conditions?.length" :conditions="conditions" :period="period || '72h'" />
-        <MarkdownContent :content="markdown" />
+        <p class="widget-summary">{{ widgetSummary(markdown) }}</p>
       </template>
       <div v-else class="notice"><b>Consejo pendiente.</b><span>Consulte primero cómo está su cultivo.</span></div>
       <footer v-if="recommendation" class="agent-meta"><span v-if="recommendation._agent_status !== 'fallback'">{{ recommendation._cached ? 'Se utilizó una respuesta anterior para los mismos datos' : 'Actualizado ahora' }}</span><span v-if="recommendation._agent_status !== 'fallback' && recommendation._agent_name">{{ recommendation._agent_name }}</span></footer>

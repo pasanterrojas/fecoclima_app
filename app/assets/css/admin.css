@@ -1,0 +1,110 @@
+/* A calm, conversational workspace using FECOCLIMA's existing blue palette. */
+.admin-layout {
+  --fc-border: #dbe7ef;
+  --fc-text-muted: #658095;
+  --fc-bg: #f1f7fb;
+  --fc-shadow: 0 4px 18px #16456b07;
+  color: #23465f;
+  font-size: .94rem;
+}
+.admin-layout .card {
+  border: 1px solid #dfeaf2;
+  border-radius: 20px;
+  box-shadow: 0 5px 22px #16456b06;
+  background: #fff;
+}
+.admin-layout .card-body { padding: 24px; }
+.admin-layout .grid { gap: 20px; }
+.admin-layout table { width: 100%; border-collapse: collapse; }
+.admin-layout th {
+  padding: 15px 18px;
+  border-bottom: 1px solid #e4eef5;
+  background: #f5f9fc;
+  color: #6c879b;
+  font-size: .65rem;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 800;
+}
+.admin-layout td { padding: 18px; border-bottom: 1px solid #eef4f8; vertical-align: middle; font-size: .83rem; }
+.admin-layout tbody tr:hover { background: #f6faff; }
+.admin-layout tbody tr:last-child td { border-bottom: 0; }
+.admin-layout .btn {
+  border-radius: 13px;
+  min-height: 44px;
+  font-size: .8rem;
+  font-weight: 750;
+  gap: 8px;
+  padding: 11px 16px;
+}
+.admin-layout .btn-primary { background: #075c99; border: 1px solid #075c99; color: #fff; box-shadow: 0 3px 7px #00448115; }
+.admin-layout .btn-primary:hover { background: #004b83; }
+.admin-layout .btn-light { background: #edf5fb; border: 1px solid #d9e8f3; color: #285f84; }
+.admin-layout .btn-danger { background: #fff1f1; color: #ac3f4e; border: 1px solid #f2dce0; }
+.admin-layout :is(.input, .select, .textarea) {
+  background: #f7fafc;
+  border: 1px solid #dbe7ef;
+  border-radius: 12px;
+  min-height: 46px;
+  color: #244b68;
+  font-size: .87rem;
+  max-width: 100%;
+  padding: 12px 14px;
+}
+.admin-layout .textarea { min-height: 128px; line-height: 1.7; }
+.admin-layout :is(.input, .select, .textarea):focus { outline: 3px solid #d7eaf8; outline-offset: 1px; border-color: #7aaed0; background: #fff; }
+.admin-layout .input::placeholder, .admin-layout .textarea::placeholder { color: #8199ab; }
+.admin-layout .label { font-size: .79rem; font-weight: 750; color: #365e7a; margin-bottom: 9px; }
+.admin-layout input:is([type=checkbox], [type=radio]) { accent-color: #126ca8; }
+.admin-layout .notice { border-radius: 14px; padding: 15px 18px; font-size: .84rem; line-height: 1.65; }
+.admin-layout .notice-success { color: #1e684d; background: #edf8f3; border-left-color: #419579; }
+.admin-layout .notice-warning { color: #795e29; background: #fff8e8; border-left-color: #ddb253; }
+.admin-layout .notice-danger { color: #9e4351; background: #fff1f2; border-left-color: #d9818b; }
+.admin-layout .section-title, .admin-layout .card h2 { font-size: 1.05rem; letter-spacing: -.02em; }
+.admin-layout .badge { border-radius: 8px; font-size: .67rem; padding: 6px 9px; font-weight: 750; }
+.admin-layout .badge-success { color: #287354; background: #e9f6ee; }
+.admin-layout .badge-warning { color: #8c681f; background: #fff4d9; }
+.admin-layout .badge-info { color: #286a99; background: #e7f3fc; }
+.admin-layout .row-between { gap: 16px; }
+.admin-layout .table-wrap { overflow: auto; border: 1px solid #e4edf4; border-radius: 14px; }
+.admin-layout .record-link { color: #075d99; font-weight: 750; text-decoration: none; }
+.admin-layout .record-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+.admin-layout .detail-tabs { display: flex; gap: 6px; padding: 5px; border: 1px solid #dde8f1; border-radius: 14px; margin: 0 0 24px; background: #e9f1f7; overflow: auto; }
+.admin-layout .detail-tabs button { padding: 10px 17px; border: 0; border-radius: 10px; background: none; color: #698498; font-size: .8rem; font-weight: 750; white-space: nowrap; }
+.admin-layout .detail-tabs button.active { color: #07558d; background: #fff; box-shadow: 0 2px 6px #13436a0e; }
+.admin-layout .back-link { display: inline-flex; margin-bottom: 20px; color: #527e9e; font-size: .79rem; font-weight: 700; }
+.admin-layout .form-help { color: var(--fc-text-muted); font-size: .8rem; line-height: 1.65; }
+.admin-layout .record-data pre, .admin-layout .record-json { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-layout progress { accent-color: #3488bc; }
+.admin-layout .checkbox-options > label { cursor: pointer; }
+.admin-layout .checkbox-options > label:has(input:checked) { color: #075d99; background: #e7f3fc; border-color: #8abbdc; }
+.admin-layout .checkbox-options > label:focus-within { outline: 2px solid #66a6d1; outline-offset: 2px; }
+.admin-layout .editor-actions { position: sticky; bottom: 0; z-index: 2; }
+.admin-layout .editor-grid > div > .label + .input, .admin-layout .editor-grid > div > .label + .select { margin-top: 0; }
+.admin-layout .summary-grid, .admin-layout .metrics-grid { gap: 18px; }
+.admin-layout .summary-card, .admin-layout .metric-card { border-radius: 18px; }
+.admin-layout.admin-mobile-mode .grid-2, .admin-layout.admin-mobile-mode .grid-3, .admin-layout.admin-mobile-mode .grid-4,
+.admin-layout.admin-mobile-mode .form-grid, .admin-layout.admin-mobile-mode .editor-grid { grid-template-columns: 1fr; }
+.admin-mobile-mode .row-between { flex-wrap: wrap; }
+.admin-mobile-mode .admin-page-head { align-items: stretch; flex-direction: column; gap: 18px; }
+.admin-mobile-mode .page-actions { width: 100%; }
+.admin-mobile-mode .page-actions > .btn { flex: 1; }
+.admin-mobile-mode .crud-toolbar { align-items: stretch; flex-direction: column; }
+.admin-mobile-mode .table-filter { width: 100%; }
+.admin-mobile-mode .table-wrap { scrollbar-width: auto; }
+.admin-mobile-mode .table-wrap:not(.mobile-card-list) table { min-width: 620px; }
+.admin-mobile-mode .input, .admin-mobile-mode .select, .admin-mobile-mode .btn { min-height: 48px; }
+@media(max-width:700px) {
+  .admin-layout .card { border-radius: 17px; }
+  .admin-layout .card-body { padding: 18px; }
+  .admin-layout .row-between { flex-wrap: wrap; }
+  .admin-layout td { padding: 14px; }
+  .admin-layout .btn { white-space: normal; }
+  .admin-layout .table-wrap table { min-width: 620px; }
+  .admin-layout .detail-tabs { margin-bottom: 20px; }
+  .admin-layout .detail-tabs button { padding: 10px 13px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .admin-layout *, .admin-layout *::before, .admin-layout *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

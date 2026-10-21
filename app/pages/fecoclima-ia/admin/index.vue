@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { AlertTriangle, Bot, CloudSun, Database, FileText, Users } from 'lucide-vue-next'
+import type { AdminStation } from '~/utils/stations'
+import { AlertTriangle, Bot, CloudSun, Database, MapPinned, Sprout } from 'lucide-vue-next'
 
 definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
 useSeoMeta({ title: 'Administración' })
 const { request } = useApi()
+const stations = ref<AdminStation[]>([])
 const stats = ref<Record<string, number>>({})
 const jobs = ref<Array<{ id: string; job_type: string; status: string; created_at: string }>>([])
 const aiRuns = ref<{ completed_24h: number; fallback_24h: number; items: Array<{ created_at: string; status: string; reason?: string; widget?: string; model?: string }> }>({ completed_24h: 0, fallback_24h: 0, items: [] })
@@ -11,12 +13,17 @@ const error = ref('')
 
 async function load() {
   try {
-    [stats.value, jobs.value, aiRuns.value] = await Promise.all([
-      request('/admin/summary'),
-      request('/admin/jobs', { query: { limit: 10 } }),
-      request('/admin/ai-runs')
+    const [summary, recentJobs, runs, stationList] = await Promise.allSettled([
+      request<typeof stats.value>('/admin/summary'),
+      request<typeof jobs.value>('/admin/jobs', { query: { limit: 10 } }),
+      request<typeof aiRuns.value>('/admin/ai-runs'),
+      request<{ items: AdminStation[] }>('/stations', { query: { limit: 250 } }).then(result => result.items)
     ])
-    error.value = ''
+    if (summary.status === 'fulfilled') stats.value = summary.value
+    if (recentJobs.status === 'fulfilled') jobs.value = recentJobs.value
+    if (runs.status === 'fulfilled') aiRuns.value = runs.value
+    if (stationList.status === 'fulfilled') stations.value = stationList.value
+    error.value = [summary, recentJobs, runs, stationList].some(result => result.status === 'rejected') ? 'Algunos datos del panel no se pudieron actualizar. Intente de nuevo.' : ''
   } catch {
     error.value = 'No pudimos actualizar el estado del panel. Intente de nuevo.'
   }
@@ -25,11 +32,11 @@ onMounted(load)
 
 const cards = computed(() => [
   { label: 'Estaciones activas', value: stats.value.stations_active || 0, icon: CloudSun },
-  { label: 'Usuarios activos', value: stats.value.users_active || 0, icon: Users },
+  { label: 'Parcelas registradas', value: stats.value.plots_total || 0, icon: MapPinned },
   { label: 'Lecturas', value: stats.value.readings_total || 0, icon: Database },
   { label: 'Alertas 72 h', value: stats.value.alerts_72h || 0, icon: AlertTriangle },
   { label: 'Agentes activos', value: stats.value.agents_active || 0, icon: Bot },
-  { label: 'Reportes', value: stats.value.reports_total || 0, icon: FileText }
+  { label: 'Cultivos activos', value: stats.value.crops_active || 0, icon: Sprout }
 ])
 
 function aiReason(reason?: string) {
@@ -45,13 +52,14 @@ function aiReason(reason?: string) {
 
 <template>
   <section>
-    <AdminPageHeader title="Panel administrativo" description="Revise las estaciones, los trabajos y cuándo respondió realmente el agente de IA." />
+    <AdminPageHeader title="Dashboard" description="Estaciones, cultivos e inteligencia agronómica en un solo lugar." />
     <p v-if="error" class="notice notice-warning">{{ error }} <button class="btn btn-light" @click="load">Reintentar</button></p>
     <div class="grid grid-3">
       <article v-for="card in cards" :key="card.label" class="card stat">
         <component :is="card.icon" /><div><b>{{ card.value }}</b><span>{{ card.label }}</span></div>
       </article>
     </div>
+    <StationOverviewMap :stations="stations" />
     <article class="card ai-overview">
       <div class="card-body">
         <div class="row-between"><h2 class="section-title">¿Está respondiendo la IA?</h2><button class="btn btn-light" @click="load">Actualizar estado</button></div>
@@ -71,7 +79,7 @@ function aiReason(reason?: string) {
     </article>
     <div class="grid grid-2 admin-sections">
       <article class="card"><div class="card-body"><h2 class="section-title">Trabajos recientes</h2><div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Estado</th><th>Creado</th></tr></thead><tbody><tr v-for="job in jobs" :key="job.id"><td>{{ job.job_type }}</td><td><span class="badge" :class="job.status === 'COMPLETED' ? 'badge-success' : job.status === 'FAILED' ? 'badge-danger' : 'badge-warning'">{{ job.status }}</span></td><td>{{ new Date(job.created_at).toLocaleString('es-PY') }}</td></tr><tr v-if="!jobs.length"><td colspan="3">Sin trabajos recientes.</td></tr></tbody></table></div></div></article>
-      <article class="card"><div class="card-body"><h2 class="section-title">Puesta en marcha</h2><ol><li>Registre cada estación en Estaciones, con sus coordenadas, zona horaria y fuente de datos.</li><li>Si usa API FECOCLIMA, ingrese un GUID distinto por estación; su clave permanece solo en el backend.</li><li>Pruebe la conexión y sincronice cada estación por separado.</li><li>Revise los datos faltantes, las reglas y los agentes de cada cultivo.</li><li>La fecha de siembra se solicita al productor al momento de consultar.</li></ol><div class="notice notice-warning">Las mediciones que faltan se indican como datos no disponibles. Si la IA falla, la respuesta se identifica como respaldo.</div></div></article>
+      <article class="card"><div class="card-body"><h2 class="section-title">Puesta en marcha</h2><ol><li>Registre cada estación en Estaciones, con sus coordenadas, zona horaria y fuente de datos.</li><li>Pegue la URL de API de cada estación; el GUID se extrae automáticamente y la clave permanece en el backend.</li><li>Pruebe la conexión y sincronice cada estación por separado.</li><li>Revise los datos faltantes, las reglas y los agentes de cada cultivo.</li><li>La fecha de siembra se solicita al productor al momento de consultar.</li></ol><div class="notice notice-warning">Las mediciones que faltan se indican como datos no disponibles. Si la IA falla, la respuesta se identifica como respaldo.</div></div></article>
     </div>
   </section>
 </template>

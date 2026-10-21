@@ -54,6 +54,7 @@ const indexDefinitions: Record<string, { label: string; title: string; help: str
   ndre: { label: 'NDRE', title: 'Clorofila', help: 'Útil para cambios de clorofila en etapas avanzadas.' },
   gndvi: { label: 'GNDVI', title: 'Actividad fotosintética', help: 'Sensibilidad a cambios en la banda verde.' },
   nbr: { label: 'NBR', title: 'Cambio fuerte de cobertura', help: 'Señala alteraciones importantes; no identifica la causa.' },
+  recl: { label: 'ReCl', title: 'Clorofila de borde rojo', help: 'B07/B05 − 1. Rango superior mayor a 4.' },
   msi: { label: 'MSI', title: 'Estrés hídrico relativo', help: 'Valores mayores pueden acompañar mayor sequedad.' },
 }
 
@@ -175,7 +176,7 @@ async function loadContext(observationId?: string | null) {
       historyInitialized.value = true
     }
     const keys = Object.keys(context.value.observation?.statistics || {})
-    if (keys.length && !keys.includes(selectedIndex.value)) selectedIndex.value = keys[0]
+    if (keys.length && !keys.includes(selectedIndex.value)) selectedIndex.value = keys[0]!
     const availableLayers = visualLayers.value.filter(item => item.url).map(item => item.key)
     if (!availableLayers.includes(selectedVisualLayer.value)) selectedVisualLayer.value = availableLayers[0] || 'true_color'
     selectedScene.value = context.value.catalog_scenes.find(item => item.scene_id === context.value?.observation?.scene_id) || null
@@ -329,7 +330,7 @@ onMounted(async () => {
       <LoadingState v-else-if="loading" />
 
       <template v-else-if="context">
-        <p v-if="context.geometry_source !== 'POLYGON'" class="notice notice-warning geometry-warning">La estación está usando un área circular aproximada. Para que la imagen represente el terreno real, dibuje y guarde el polígono en <NuxtLink to="/fecoclima-ia/admin/estaciones">Administración → Estaciones</NuxtLink>.</p>
+        <p v-if="context.geometry_source !== 'POLYGON'" class="notice notice-warning geometry-warning">La estación está usando un área circular aproximada. Para consultar el terreno real, delimite su parcela en <NuxtLink to="/fecoclima-ia">Mi parcela</NuxtLink>.</p>
         <p v-if="context.observation?.data_warning" class="notice notice-warning freshness-warning">{{ context.observation.data_warning }}</p>
         <section class="history-card card">
           <div class="card-body">
@@ -356,7 +357,7 @@ onMounted(async () => {
             </div>
             <div v-else class="empty-scenes"><Satellite /><div><b>No se encontraron escenas en el periodo.</b><p>Aumente el historial o revise el máximo de nubosidad configurado en Administración → Integraciones.</p></div></div>
             <div v-if="selectedScene && !selectedScene.processed" class="process-scene">
-              <div><b>Esta fecha todavía no fue procesada.</b><span>Copernicus calculará la imagen RGB y los nueve índices para todo el polígono.</span></div>
+              <div><b>Esta fecha todavía no fue procesada.</b><span>Copernicus calculará la imagen RGB y los índices disponibles para todo el polígono.</span></div>
               <button class="btn btn-primary" :disabled="processing" @click="processScene(selectedScene)">
                 <LoaderCircle v-if="processing" class="spinning" /><ScanSearch v-else />
                 {{ processing ? 'Procesando escena…' : 'Procesar esta fecha' }}

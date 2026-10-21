@@ -53,26 +53,26 @@ const rendered = computed(() => {
     const heading = line.match(/^(#{1,4})\s+(.+)$/)
     if (heading) {
       closeList()
-      const level = heading[1].length
-      output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`)
+      const level = (heading[1] || '').length
+      output.push(`<h${level}>${inlineMarkdown(heading[2] || '')}</h${level}>`)
       continue
     }
     const quote = line.match(/^>\s?(.*)$/)
     if (quote) {
       closeList()
-      output.push(`<blockquote>${inlineMarkdown(quote[1])}</blockquote>`)
+      output.push(`<blockquote>${inlineMarkdown(quote[1] || '')}</blockquote>`)
       continue
     }
     const unordered = line.match(/^[-*+]\s+(.+)$/)
     if (unordered) {
       if (list !== 'ul') { closeList(); list = 'ul'; output.push('<ul>') }
-      output.push(`<li>${inlineMarkdown(unordered[1])}</li>`)
+      output.push(`<li>${inlineMarkdown(unordered[1] || '')}</li>`)
       continue
     }
     const ordered = line.match(/^\d+[.)]\s+(.+)$/)
     if (ordered) {
       if (list !== 'ol') { closeList(); list = 'ol'; output.push('<ol>') }
-      output.push(`<li>${inlineMarkdown(ordered[1])}</li>`)
+      output.push(`<li>${inlineMarkdown(ordered[1] || '')}</li>`)
       continue
     }
     closeList()

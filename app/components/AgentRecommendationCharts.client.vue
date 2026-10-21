@@ -27,7 +27,7 @@ const periodLabel = computed(() => ({
 
 function numericObserved(item: AlertCondition): number | null {
   const raw = item.period_value ?? item.value
-  if (raw == null || raw === '') return null
+  if (raw == null) return null
   const value = Number(raw)
   return Number.isFinite(value) ? value : null
 }

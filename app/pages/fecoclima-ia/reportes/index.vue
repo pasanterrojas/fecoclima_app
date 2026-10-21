@@ -19,7 +19,7 @@ const message = ref('')
 
 async function load() {
   [stations.value, crops.value, reports.value] = await Promise.all([
-    request('/public/stations'), request('/public/crops'), request('/reports/public', { query: { limit: 30 } })
+    request<Station[]>('/public/stations'), request<Crop[]>('/public/crops'), request<typeof reports.value>('/reports/public', { query: { limit: 30 } })
   ])
   if (!form.station_id && stations.value[0]) form.station_id = stations.value[0].id
   if (!crops.value.some(crop => crop.code === form.crop_code)) {

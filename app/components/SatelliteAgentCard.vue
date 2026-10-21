@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { widgetSummary } from '~/utils/widgetText'
 import { BrainCircuit, RefreshCw, Satellite } from 'lucide-vue-next'
 import type { Recommendation } from '~/types/api'
 defineProps<{ recommendation?: Recommendation | null; loading?: boolean; error?: string }>()
@@ -10,7 +11,7 @@ const emit = defineEmits<{ refresh: [] }>()
       <header class="head"><div class="icon"><Satellite /></div><div><span>Agente especializado</span><h3>{{ recommendation?._agent_name || 'Criterio IA de Copernicus' }}</h3><p>Interpreta la imagen y los índices de la geozona; los contrasta con clima, fenología y pronóstico.</p></div><button class="btn btn-light" :disabled="loading" @click="emit('refresh')"><RefreshCw /> Analizar geozona</button></header>
       <div v-if="loading" class="loading"><BrainCircuit /><span>Analizando imagen, NDVI, NDMI, NDWI, tendencias y calidad de escena…</span></div>
       <div v-else-if="error" class="notice notice-warning">{{ error }}</div>
-      <MarkdownContent v-else-if="recommendation?.markdown" :content="recommendation.markdown" />
+      <p v-else-if="recommendation?.markdown" class="widget-summary">{{ widgetSummary(recommendation.markdown) }}</p>
       <div v-else class="notice">Actualice Copernicus o ejecute “Analizar con IA” para obtener el criterio del agente satelital.</div>
       <footer v-if="recommendation" class="meta"><span>{{ recommendation.has_satellite_image ? 'La imagen procesada fue enviada al modelo visual.' : 'Análisis basado en índices y metadatos disponibles.' }}</span><span v-if="recommendation._model">{{ recommendation._model }}</span></footer>
     </div>

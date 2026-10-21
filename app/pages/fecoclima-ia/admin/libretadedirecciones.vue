@@ -1,0 +1,20 @@
+<script setup lang="ts">
+import {Mail, RefreshCw, Search, UserCheck, UserX} from 'lucide-vue-next'
+definePageMeta({layout:'admin',middleware:'admin-auth'})
+useSeoMeta({title:'Libreta de direcciones · FECOCLIMA IA'})
+const {request}=useApi()
+const loading=ref(false),busy=ref(''),notice=ref(''),error=ref(''),find=ref('')
+const statusLabels: Record<string,string> = {ACTIVE:'Confirmada',PENDING:'Pendiente',DISABLED:'Desactivada',UNSUBSCRIBED:'Baja solicitada'}
+const rows=ref<any[]>([]),total=ref(0),offset=ref(0)
+const filtered=computed(()=>rows.value.filter((r:any)=>[r.email,r.crop,r.station,r.status].join(' ').toLowerCase().includes(find.value.toLowerCase())))
+async function load(){loading.value=true;error.value='';try{const r:any=await request('/notifications/address-book',{query:{offset:offset.value,limit:100}});rows.value=r.items||[];total.value=r.total||0}catch(e:any){error.value=e?.data?.detail||'No se pudo cargar la libreta.'}finally{loading.value=false}}
+async function toggle(row:any){if(!window.confirm(`¿Desea ${row.status==='ACTIVE'?'desactivar':'reactivar'} la suscripción ${row.email}?`))return;busy.value=row.id;notice.value='';error.value='';try{const r:any=await request(`/notifications/address-book/${row.id}`,{method:'PATCH',body:{active:row.status!=='ACTIVE'}});notice.value=r.message;await load()}catch(e:any){error.value=e?.data?.detail||'No se pudo actualizar.'}finally{busy.value=''}}
+onMounted(load)
+</script>
+<template><section><AdminPageHeader title="Libreta de direcciones" description="Suscriptores voluntarios, validados por correo y asociados a una estación y cultivo."/>
+<div class="toolbar"><label class="search-input"><Search :size="18"/><input v-model="find" class="input" placeholder="Buscar por correo, cultivo o estación…" aria-label="Buscar suscriptores"></label><div class="row"><NuxtLink to="/fecoclima-ia/admin/eventos" class="btn btn-primary">Configurar eventos</NuxtLink><button class="btn btn-light" :disabled="loading" @click="load"><RefreshCw :size="17"/> Actualizar</button></div></div>
+<p v-if="notice" class="notice" role="status">{{notice}}</p><p v-if="error" class="notice notice-danger" role="alert">{{error}}</p>
+<article class="card"><div class="table-wrap"><table><thead><tr><th>Correo</th><th>Cultivo</th><th>Estación</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr></thead><tbody><tr v-for="row in filtered" :key="row.id"><td><Mail :size="15" class="inline-icon"/> {{row.email}}</td><td>{{row.crop}}</td><td>{{row.station}}</td><td><span class="badge" :class="row.status==='ACTIVE'?'badge-success':row.status==='PENDING'?'badge-warning':'badge-danger'">{{ statusLabels[row.status] ||row.status}}</span></td><td>{{row.confirmed_at?new Date(row.confirmed_at).toLocaleDateString('es-PY'):'—'}}</td><td><button v-if="row.status==='ACTIVE'||row.status==='DISABLED'" class="btn btn-light" :disabled="busy===row.id" @click="toggle(row)"><UserX v-if="row.status==='ACTIVE'" :size="17"/><UserCheck v-else :size="17"/>{{row.status==='ACTIVE'?'Desactivar':'Reactivar'}}</button><span v-else class="small muted">{{row.status==='PENDING'?'Esperando confirmación':'Requiere nuevo consentimiento'}}</span></td></tr><tr v-if="!filtered.length"><td colspan="6">{{loading?'Cargando…':'No hay suscripciones para mostrar.'}}</td></tr></tbody></table></div></article>
+<div class="row pagination"><span class="small muted">{{total}} registros</span><button class="btn btn-light" :disabled="offset===0||loading" @click="offset=Math.max(0,offset-100);load()">Anterior</button><button class="btn btn-light" :disabled="offset+100>=total||loading" @click="offset+=100;load()">Siguiente</button></div>
+<p class="notice small">Por seguridad, no se puede activar sin consentimiento una dirección pendiente o dada de baja. Un usuario puede volver a suscribirse desde la página pública.</p></section></template>
+<style scoped>.search-input{display:flex;align-items:center;position:relative;max-width:420px;width:100%}.search-input svg{position:absolute;left:12px;color:var(--fc-secondary)}.search-input input{padding-left:40px}.inline-icon{vertical-align:middle}.pagination{margin:18px 0}.row{flex-wrap:wrap}</style>

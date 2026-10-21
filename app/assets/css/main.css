@@ -99,3 +99,27 @@ th { color: var(--fc-primary); font-size: .86rem; background: var(--fc-surface-m
   .card-body { padding: 15px; }
   .badge { max-width: 100%; white-space: normal; }
 }
+
+/* Conversational workspace: restrained FECOCLIMA blue, tactile cards, quiet density. */
+:root{--fc-shadow:0 5px 22px rgba(0,58,105,.075);--fc-radius:19px;--fc-radius-sm:12px}
+body{background:linear-gradient(180deg,#eaf3f9 0%,#f6fafc 350px,#f1f7fb 100%)}
+.card,.panel{box-shadow:var(--fc-shadow)}
+.btn{border-radius:12px}.btn-primary{background:linear-gradient(115deg,var(--fc-primary),#126eae)}
+.btn-light{background:#e7f2fa}
+.card:hover,.panel:hover{border-color:#afcadc}
+@media(max-width:720px){
+  body{padding-bottom:calc(77px + env(safe-area-inset-bottom))}
+  .page{padding-bottom:32px}
+  .fc-mobile-simple .public-layout .map-frame,.fc-mobile-simple .public-layout .map-frame .world-map-shell{min-height:350px}
+}
+
+/* Explicit compact mode keeps every result and action available. */
+.fc-mobile-simple .public-layout .container{max-width:760px}
+.fc-mobile-simple .public-layout .map-query,.fc-mobile-simple .public-layout .widget-grid,.fc-mobile-simple .public-layout .grid-2,.fc-mobile-simple .public-layout .grid-3,.fc-mobile-simple .public-layout .grid-4,.fc-mobile-simple .public-layout .form-grid{grid-template-columns:minmax(0,1fr)}
+.fc-mobile-simple .public-layout .parcel-controls{flex-wrap:wrap}
+.fc-mobile-simple .public-layout .btn,.fc-mobile-simple .public-layout .input,.fc-mobile-simple .public-layout .select{min-height:48px}
+.fc-mobile-simple .public-layout .public-nav .nav-item{padding:9px 10px;font-size:.78rem}
+.fc-mobile-simple .public-layout .map-frame .world-map-shell{height:52vh;min-height:340px}
+.fc-mobile-simple .public-layout .steps-flow>.widget{padding:18px}
+.unit-help{grid-column:1/-1;margin:0;padding:12px;border-radius:12px;background:#eaf4fb;color:#315a76;font-size:.85rem}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}

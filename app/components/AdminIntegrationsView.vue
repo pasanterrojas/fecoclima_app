@@ -1,6 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
-
+const props = defineProps<{ detailId?: string }>()
 const { request } = useApi()
 const stations = ref<any[]>([])
 const selectedStationId = ref('')
@@ -19,15 +18,7 @@ onMounted(loadStations)
 
 const fields = [
   { key: 'name', label: 'Nombre', required: true },
-  { key: 'integration_type', label: 'Tipo', type: 'select', required: true, options: [
-    { label: 'Estación meteorológica', value: 'WEATHER' },
-    { label: 'Pronóstico', value: 'FORECAST' },
-    { label: 'Satélite', value: 'SATELLITE' },
-    { label: 'Inteligencia artificial', value: 'AI' },
-    { label: 'Correo SMTP', value: 'SMTP' },
-    { label: 'Avisos a productores', value: 'NOTIFICATION' }
-  ] },
-  { key: 'provider', label: 'Proveedor', type: 'select', required: true, options: [
+  { key: 'provider', label: 'Servicio', type: 'select', required: true, defaultValue: 'COPERNICUS_DATA_SPACE', options: [
     { label: 'FECOCLIMA', value: 'FECOCLIMA' },
     { label: 'Open-Meteo', value: 'OPEN_METEO' },
     { label: 'Copernicus Data Space', value: 'COPERNICUS_DATA_SPACE' },
@@ -35,9 +26,11 @@ const fields = [
     { label: 'SMTP', value: 'SMTP' },
     { label: 'Correo + Telegram', value: 'EMAIL_TELEGRAM_DIGEST' }
   ] },
+  { key: 'client_id', label: 'Client ID de Copernicus', configKey: 'client_id', showWhen: {key:'provider',values:['COPERNICUS_DATA_SPACE']}, required: true, hint:'Identificador de su aplicación en Copernicus Data Space.' },
+  { key:'refresh_hours',label:'Buscar nuevas imágenes cada',type:'select',configKey:'refresh_hours',defaultValue:'24',showWhen:{key:'provider',values:['COPERNICUS_DATA_SPACE']},options:[{value:'6',label:'6 horas'},{value:'12',label:'12 horas'},{value:'24',label:'24 horas'},{value:'48',label:'48 horas'}]},
   { key: 'base_url', label: 'URL base', hint: 'Para Copernicus puede dejarla vacía y usar las URLs específicas del JSON.' },
-  { key: 'timeout_seconds', label: 'Timeout (s)', type: 'number', numericMode: 'integer', step: 1, min: 1, max: 600, hint: 'Número entero entre 1 y 600 segundos.' },
-  { key: 'retry_count', label: 'Reintentos', type: 'number', numericMode: 'integer', step: 1, min: 0, max: 10, hint: 'Número entero entre 0 y 10.' },
+  { key: 'timeout_seconds', label: 'Timeout (s)', type: 'number', numericMode: 'integer', step: 1, min: 1, max: 600, defaultValue: 30, hint: 'Número entero entre 1 y 600 segundos.' },
+  { key: 'retry_count', label: 'Reintentos', type: 'number', numericMode: 'integer', step: 1, min: 0, max: 10, defaultValue: 3, hint: 'Número entero entre 0 y 10.' },
   { key: 'sync_frequency_minutes', label: 'Frecuencia (min)', type: 'number', numericMode: 'integer', step: 1, min: 1, hint: 'Déjelo vacío si no debe ejecutarse automáticamente.' },
   {
     key: 'non_sensitive_config',
@@ -54,12 +47,14 @@ const fields = [
     hint: 'En Copernicus ingrese el client_secret. Al editar, déjelo vacío para conservar el secreto existente.'
   },
   { key: 'active', label: 'Activa', type: 'checkbox' }
-] as const
+].map(field => ({...field, ...(field.type === 'checkbox' ? {type:'boolean-select'} : {}), advanced: ['base_url','timeout_seconds','retry_count','non_sensitive_config','sync_frequency_minutes'].includes(field.key)}))
+const serviceTypes: Record<string,string> = {FECOCLIMA:'WEATHER',OPEN_METEO:'FORECAST',COPERNICUS_DATA_SPACE:'SATELLITE',OPENAI_COMPATIBLE:'AI',SMTP:'SMTP',EMAIL_TELEGRAM_DIGEST:'NOTIFICATION'}
+function preparePayload(payload: Record<string,any>) { return {...payload,integration_type:serviceTypes[payload.provider]} }
 </script>
 
 <template>
   <section>
-    <div class="station-test-card">
+    <div v-if="props.detailId && props.detailId !== 'nuevo'" class="station-test-card">
       <label>
         <span class="label">Estación utilizada en la prueba</span>
         <select v-model="selectedStationId" class="select">
@@ -71,14 +66,16 @@ const fields = [
         <small>Sentinel-2 y Open-Meteo probarán exactamente la estación seleccionada. Así el resultado no se mezcla con parcelas o estaciones heredadas.</small>
       </label>
     </div>
-    <div class="notice integration-guide">
+    <details v-if="props.detailId" class="notice integration-guide"><summary>Cómo interpretar las pruebas</summary>
       <b>¿Qué significa FAILED en Sentinel-2?</b>
       <span>Es el resultado de la última prueba manual o ejecución registrada. La columna “Detalle” muestra ahora la fase exacta que falló: catálogo STAC, OAuth, generación RGB o estadísticas espectrales.</span>
-    </div>
-    <AdminCrudPage
+    </details>
+    <AdminCrudPage :detail-id="props.detailId" base-path="/fecoclima-ia/admin/integraciones"
       title="Integraciones"
-      description="Configure y pruebe FECOCLIMA, Open-Meteo, Copernicus, IA y correo. Las credenciales de Copernicus pueden administrarse cifradas desde este panel o mantenerse en el .env como respaldo."
+      description="Conecte estaciones, pronósticos, imágenes satelitales, IA y canales de comunicación."
       endpoint="/integrations"
+      create-label="Agregar integración"
+      :prepare-payload="preparePayload"
       :fields="fields as any"
       :allow-test="true"
       :test-query="() => selectedStationId ? { station_id: selectedStationId } : {}"

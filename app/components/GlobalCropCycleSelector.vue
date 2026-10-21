@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CropCycle } from '~/types/api'
+interface CropCycle { id: string; name: string; planting_date: string }
 
 defineProps<{ modelValue: string; cycles: CropCycle[] }>()
 defineEmits<{ 'update:modelValue': [value: string] }>()
