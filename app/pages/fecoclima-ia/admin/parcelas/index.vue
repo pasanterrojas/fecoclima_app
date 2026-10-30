@@ -42,7 +42,7 @@ onMounted(load)
         @click="openForm()"
       >
         Nueva parcela</button
-      ><NuxtLink to="/fecoclima-ia" class="btn btn-light">Abrir vista Productor / Técnico</NuxtLink>
+      ><NuxtLink to="/fecoclima-ia/admin/parcelas/historico" class="btn btn-light">Histórico de parcelas e imágenes</NuxtLink><NuxtLink to="/fecoclima-ia" class="btn btn-light">Abrir vista Productor / Técnico</NuxtLink>
     </div>
     <ParcelForm
       v-if="formOpen"

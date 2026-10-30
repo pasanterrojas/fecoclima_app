@@ -5,6 +5,10 @@ const reasons: Record<string,string> = {agent_not_configured:'No hay un agente a
 const summary = computed(() => props.result?.markdown || '')
 const sourceText = computed(() => (props.result?.sources || []).map(source => `${source.document}${source.page_or_section ? ` · ${source.page_or_section}` : ''}`).join('; '))
 const technicalHint = computed(() => props.result?.status === 'fallback' ? reasons[props.result.fallback_reason || ''] || 'No se pudo consultar el modelo de IA.' : '')
+const incomplete = computed(() => props.result?.text_complete === false || Boolean(props.result?.max_characters && /(?:…|\.{3})$/.test(summary.value.trim())))
+const recoveryAction = computed(() => props.result?.purpose === 'WEATHER_ANALYSIS' || props.result?.purpose === 'FORECAST_ANALYSIS'
+  ? 'Pulse «Interpretar pronóstico» para generar una versión completa.'
+  : 'Vuelva a generar esta interpretación para obtener una versión completa.')
 </script>
 <template>
   <div v-if="result" class="parcel-interpretation">
@@ -12,6 +16,7 @@ const technicalHint = computed(() => props.result?.status === 'fallback' ? reaso
       result.status === 'completed' ? 'Interpretación de IA' : result.status === 'disabled' ? 'Interpretación desactivada' : 'Resumen basado en datos · IA no disponible'
     }}</small>
     <MarkdownContent :content="summary" />
+    <p v-if="incomplete" class="incomplete-text" role="status">Esta explicación guardada quedó incompleta. {{ recoveryAction }}</p>
     <small v-if="technicalHint" class="ai-limitation">{{ technicalHint }}</small>
     <div v-if="sourceText" class="sources-hint"><span>Documentos consultados</span><InfoHint :text="sourceText" /></div>
   </div>
@@ -23,6 +28,8 @@ const technicalHint = computed(() => props.result?.status === 'fallback' ? reaso
   gap: 8px;
 }
 .ai-limitation { display: block; font-size: .74rem; line-height: 1.5; }
+.incomplete-text { padding: 10px 12px; border-radius: 9px; background: #fff3db; color: #684c14; font-size: .82rem; line-height: 1.5; }
+.sources-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .status {
   font-weight: 700;
   color: var(--fc-text-muted);

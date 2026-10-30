@@ -55,7 +55,7 @@ export function useApi() {
     return csrf.value
   }
 
-  async function request<T>(path: string, options: Parameters<typeof $fetch<T>>[1] = {}): Promise<T> {
+  async function performRequest<T>(path: string, options: Parameters<typeof $fetch<T>>[1] = {}): Promise<T> {
     const headers = new Headers(options.headers as HeadersInit | undefined)
     const method = String(options.method || 'GET').toUpperCase()
 
@@ -119,5 +119,28 @@ export function useApi() {
     }
   }
 
+  const route = useRoute()
+  const toast = useAdminToast()
+  async function request<T>(path: string, options: Parameters<typeof $fetch<T>>[1] = {}): Promise<T> {
+    const method = String(options.method || 'GET').toUpperCase()
+    const feedback = import.meta.client && route.path.includes('/admin/') && !path.startsWith('/auth/') && !['GET', 'HEAD', 'OPTIONS'].includes(method)
+    try {
+      const result = await performRequest<T>(path, options)
+      if (feedback) {
+        const message = typeof (result as any)?.message === 'string' ? (result as any).message :
+          method === 'DELETE' ? 'Registro eliminado correctamente.' :
+          ['PUT', 'PATCH'].includes(method) ? 'Cambios guardados correctamente.' :
+          /\/(parse|test|simulate|run)(?:\?|$)/.test(path) ? 'Solicitud completada correctamente.' : 'Datos guardados correctamente.'
+        toast.show(message)
+      }
+      return result
+    } catch (exception: any) {
+      if (feedback) {
+        const detail = exception?.data?.detail
+        toast.show(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((item: any) => item.msg).join(' · ') : 'Revise la conexión y los datos e intente de nuevo.', 'error')
+      }
+      throw exception
+    }
+  }
   return { request, apiUrl }
 }

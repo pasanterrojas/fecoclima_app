@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { recentImageryScenes, resolveImageryScene } from '~/utils/imageryHistory'
 import {
   Bot,
+  Bell,
+  ChevronDown,
   CheckCircle2,
   AlertTriangle,
   CircleHelp,
@@ -24,7 +27,7 @@ import type { ChatMessage, Interpretation, Parcel, ParcelDraft, ParcelAnalysis }
 import type { Geometry, MapStation } from '~/types/plots'
 
 const { request, apiUrl, ready: prepareBrowser } = usePublicParcelApi()
-const { dateTime:dateLabel, zoneLabel:viewerZoneLabel } = useViewerTime()
+const { dateTime:dateLabel } = useViewerTime()
 const selection = useSelectionStore()
 const parcels = ref<Parcel[]>([])
 const analysis = ref<ParcelAnalysis | null>(null)
@@ -33,6 +36,12 @@ const busy = ref('')
 const error = ref('')
 const notice = ref('')
 const technical = ref(false)
+const widgetIdPrefix = useId()
+const collapsedWidgets = ref<Record<number, boolean>>({})
+function toggleWidget(number: number) {
+  collapsedWidgets.value[number] = !collapsedWidgets.value[number]
+}
+
 const hours = ref('72')
 const formOpen = ref(false)
 const editing = ref<Parcel | undefined>()
@@ -56,6 +65,17 @@ const chatVisibleResults = (key: string) => {
   const result = analysis.value?.agent_results?.[key]
   return result && Number((result as Interpretation & {window_hours?:number}).window_hours) === analysisHours.value
     && (result as Interpretation & {view_mode?:string}).view_mode === (technical.value ? 'technical' : 'producer') ? result : undefined
+}
+const parcelGuidance = computed(() => chatVisibleResults('ORCHESTRATOR'))
+
+async function continueAnalysisInChat() {
+  collapsedWidgets.value[6] = false
+  if (!question.value.trim()) {
+    question.value = 'Con base en el análisis de esta parcela, ayúdame a priorizar qué hacer y qué debo comprobar antes de tomar una decisión.'
+  }
+  await nextTick()
+  document.getElementById('parcel-analysis-chat')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  document.getElementById('parcel-question')?.focus({ preventScroll: true })
 }
 function scrollToLatest() {
   if (import.meta.client) nextTick(() => { if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight })
@@ -130,7 +150,41 @@ const previewEnabled = computed(() => {
   return !parcel || JSON.stringify(parcel.geojson) !== JSON.stringify(mapGeometry.value)
 })
 const imageryPreview = useParcelImagery(mapGeometry, previewEnabled)
+type SpectralScene = NonNullable<ParcelAnalysis['context']['satellite']>
+const savedImageryPlotId = computed(() => !previewEnabled.value ? selected.value?.id || '' : '')
+const savedImagery = useParcelSatelliteHistory(savedImageryPlotId)
+const selectedImageryId = ref('')
+const imageryHistory = computed(() => {
+  if (previewEnabled.value) return recentImageryScenes(imageryPreview.state.value?.history || [])
+  const scenes = new Map(savedImagery.history.value.map(scene => [scene.id, scene]))
+  const snapshot = context.value
+  if (snapshot?.satellite && JSON.stringify(snapshot.plot.geojson) === JSON.stringify(mapGeometry.value) && !scenes.has(snapshot.satellite.id)) {
+    scenes.set(snapshot.satellite.id, snapshot.satellite)
+  }
+  return recentImageryScenes([...scenes.values()])
+})
+function selectImagery(id: string) {
+  selectedImageryId.value = id
+  if (previewEnabled.value) imageryPreview.selected.value = id
+}
+watch([savedImageryPlotId, () => JSON.stringify(mapGeometry.value)], () => { selectedImageryId.value = '' })
+watch(imageryHistory, scenes => {
+  if (selectedImageryId.value && !scenes.some(scene => scene.id === selectedImageryId.value)) selectImagery('')
+})
+const satelliteQuerying = computed(() => previewEnabled.value
+  ? imageryPreview.loading.value || (imageryPreview.state.value?.status === 'PROCESSING' && !imageryPreview.pollingPaused.value)
+  : savedImagery.refreshing.value)
+async function consultLatestImagery() {
+  selectImagery('')
+  if (previewEnabled.value) await imageryPreview.load(true)
+  else await savedImagery.refresh()
+}
 const mapImagery = computed(() => {
+  const historicalScene = resolveImageryScene(imageryHistory.value, selectedImageryId.value)
+  if (historicalScene) return { ...historicalScene, index_images: {
+    ...historicalScene.index_images,
+    ...(historicalScene.image_available && historicalScene.source_url ? { rgb: historicalScene.source_url } : {}),
+  } }
   const previewScene = imageryPreview.scene.value
   const snapshot = context.value
   // Preview media links are revoked when the crop-less polygon is promoted to a parcel.
@@ -147,7 +201,6 @@ const mapImagery = computed(() => {
   } }
   return null
 })
-type SpectralScene = NonNullable<ParcelAnalysis['context']['satellite']>
 const spectralLabels: Record<string, string> = {
   ndvi: 'Vegetación', ndmi: 'Humedad de la vegetación', ndwi: 'Agua superficial', ndre: 'Clorofila',
   evi: 'Actividad vegetal', savi: 'Vegetación y suelo', gndvi: 'Verdor', nbr: 'Cambios en cobertura', msi: 'Estrés hídrico', recl: 'Clorofila de borde rojo',
@@ -209,7 +262,7 @@ function beginSatelliteTracking() {
   stopSatelliteTracking()
   satelliteAutomaticUpdate.value = false
   satelliteProgress.value = ''
-  if (!analysis.value || !selection.plotId) return
+  if (!analysis.value || !selection.plotId || context.value?.satellite_selection?.mode === 'selected') return
   const token = satellitePollGeneration
   void followSatellite(selection.plotId, analysis.value.id, token)
 }
@@ -230,7 +283,13 @@ const producerName = ref('')
 const producerDocument = ref('')
 const sessionCount = ref(0)
 const deleteConfirmation = ref(false)
-const satelliteDisplay = computed(() => imageryStatus(previewEnabled.value ? imageryPreview.state.value?.status : undefined, !!spectralValues.value.length, imageryPreview.loading.value, imageryPreview.pollingPaused.value, imageryPreview.error.value))
+const satelliteDisplay = computed(() => imageryStatus(
+  previewEnabled.value ? imageryPreview.state.value?.status : savedImagery.status.value,
+  !!spectralValues.value.length,
+  previewEnabled.value ? imageryPreview.loading.value : savedImagery.loading.value,
+  previewEnabled.value ? imageryPreview.pollingPaused.value : savedImagery.pollingPaused.value,
+  previewEnabled.value ? imageryPreview.error.value : savedImagery.error.value,
+))
 const satelliteBusy = computed(() => !!mapGeometry.value && satelliteDisplay.value.busy)
 const mapCropId = ref('')
 const mapPlantingDate = ref('')
@@ -441,7 +500,10 @@ async function loadSelected() {
     const snapshot = await request<ParcelAnalysis | null>(`/parcels/${id}/analyses/latest`)
     if (token !== generation) return
     analysis.value = snapshot
-    if (snapshot) hours.value = String(analysisHours.value)
+    if (snapshot) {
+      hours.value = String(analysisHours.value)
+      selectedImageryId.value = snapshot.context.satellite?.id || ''
+    }
     if (snapshot) {
       const history=await request<{messages:ChatMessage[]}>(`/parcels/analyses/${snapshot.id}/chat`)
       if(token===generation)messages.value=history.messages
@@ -590,6 +652,7 @@ async function analyzeDrawnParcel() {
     error.value = 'Seleccione un cultivo e indique la fecha de siembra.'
     return
   }
+  const analysisBody = { window_hours: Number(hours.value), satellite_observation_id: spectralScene.value?.id || null }
   const token = resetAnalysisForRun()
   busy.value = 'analysis'
   error.value = ''
@@ -621,9 +684,10 @@ async function analyzeDrawnParcel() {
     if (token !== generation) return
     analysisStage.value = 1
     analysisDetail.value = ''
-    const snapshot = await request<ParcelAnalysis>(`/parcels/${parcel.id}/analyses`, { method: 'POST', body: { window_hours: Number(hours.value) } })
+    const snapshot = await request<ParcelAnalysis>(`/parcels/${parcel.id}/analyses`, { method: 'POST', body: analysisBody })
     if (token !== generation) return
     analysis.value = snapshot
+    selectedImageryId.value = snapshot.context.satellite?.id || ''
     messages.value = []
     mapGeometry.value = parcel.geojson
     imageryPreview.stop(true)
@@ -650,6 +714,7 @@ async function saved(parcel: Parcel) {
 async function analyze() {
   const id = selection.plotId
   if (!id) return
+  const analysisBody = { window_hours: Number(hours.value), satellite_observation_id: spectralScene.value?.id || null }
   const token = resetAnalysisForRun()
   busy.value = 'analysis'
   error.value = ''
@@ -661,9 +726,10 @@ async function analyze() {
     notice.value = refreshNotice(syncResult)
     analysisStage.value = 1
     analysisDetail.value = ''
-    const snapshot = await request<ParcelAnalysis>(`/parcels/${id}/analyses`, { method: 'POST', body: { window_hours: Number(hours.value) } })
+    const snapshot = await request<ParcelAnalysis>(`/parcels/${id}/analyses`, { method: 'POST', body: analysisBody })
     if (token !== generation) return
     analysis.value = snapshot
+    selectedImageryId.value = snapshot.context.satellite?.id || ''
     messages.value = []
     busy.value = ''
     await fillWidgets(snapshot)
@@ -674,6 +740,7 @@ async function analyze() {
   }
 }
 async function refreshSources() {
+  const analysisBody = { window_hours: Number(hours.value), satellite_observation_id: spectralScene.value?.id || null }
   busy.value = 'refresh'
   error.value = ''
   try {
@@ -686,7 +753,7 @@ async function refreshSources() {
     if (analysis.value && plotId === selection.plotId) {
       analysisStage.value = 1
       analysisDetail.value = ''
-      const snapshot = await request<ParcelAnalysis>(`/parcels/${plotId}/analyses`, { method: 'POST', body: { window_hours: Number(hours.value) } })
+      const snapshot = await request<ParcelAnalysis>(`/parcels/${plotId}/analyses`, { method: 'POST', body: analysisBody })
       if (plotId === selection.plotId) {
         analysis.value = snapshot
         messages.value = []
@@ -920,6 +987,7 @@ onBeforeUnmount(() => {
       <div class="workspace-top-controls">
         <div class="parcel-controls">
           <label class="parcel-selector"><span class="label">Mis parcelas <small>{{sessionCount}}/3 en esta sesión</small></span><select v-model="selection.plotId" class="select" :disabled="!!busy || agentsRunning" aria-label="Seleccionar parcela"><option value="">Seleccione una parcela</option><option v-for="parcel in parcels" :key="parcel.id" :value="parcel.id">{{parcel.name}}</option></select></label>
+          <NuxtLink v-if="selected" class="btn btn-light parcel-alerts-button" :to="`/fecoclima-ia/suscripciones?parcela=${selected.id}`" title="Recibir alertas para esta parcela"><Bell aria-hidden="true" /><span>Recibir alertas</span></NuxtLink>
           <label class="parcel-color-control"><span class="sr-only">Color de la parcela seleccionada</span><input v-model="mapParcelColor" type="color" :disabled="!!busy || agentsRunning" aria-label="Color de la parcela seleccionada" title="Color de la parcela" @change="saveParcelColor" /></label>
           <button type="button" class="btn btn-light new-parcel-button" :disabled="loading || !!busy || agentsRunning || sessionCount>=3" @click="openForm()"><Plus/> Nueva parcela</button>
           <button v-if="selected" type="button" class="btn btn-light delete-parcel-button" :disabled="!!busy || agentsRunning" aria-label="Borrar parcela seleccionada" title="Borrar parcela" @click="deleteConfirmation = true"><Trash2 /></button>
@@ -954,6 +1022,10 @@ onBeforeUnmount(() => {
             @select-parcel="selectMapParcel"
             :coverage="coveragePreview?.coverage_pct"
             :imagery="mapImagery"
+            :imagery-scenes="mapGeometry ? imageryHistory : undefined"
+            :selected-imagery-id="selectedImageryId"
+            :imagery-history-loading="previewEnabled ? imageryPreview.loading.value : savedImagery.loading.value"
+            @select-imagery="selectImagery"
           />
           <template #fallback><div class="map-loading">Preparando mapa mundial…</div></template>
         </ClientOnly>
@@ -971,23 +1043,31 @@ onBeforeUnmount(() => {
             <span class="satellite-loading-track" aria-hidden="true"><i /></span>
           </div>
           <p v-if="satelliteDisplay.message && satelliteBusy" class="spectral-progress">{{ satelliteDisplay.message }}</p>
-          <p v-if="spectralValues.length" class="spectral-progress">{{ satelliteDisplay.message || 'Imagen e índices disponibles para la fecha indicada.' }}</p>
-          <p v-else-if="satelliteProgress && analysis" class="spectral-progress">{{ satelliteProgress }}</p>
-          <p v-else-if="previewEnabled && !satelliteBusy">{{ satelliteDisplay.message || imageryPreview.state.value?.message || 'Delimite la parcela para iniciar su consulta satelital.' }}</p>
+          <p v-if="!spectralValues.length && satelliteProgress && analysis" class="spectral-progress">{{ satelliteProgress }}</p>
+          <p v-else-if="!spectralValues.length && previewEnabled && !satelliteBusy">{{ satelliteDisplay.message || imageryPreview.state.value?.message || 'Delimite la parcela para iniciar su consulta satelital.' }}</p>
           <p v-if="imageryPreview.error.value && previewEnabled" role="alert" class="spectral-warning">{{ imageryPreview.error.value }}</p>
-          <div v-if="spectralValues.length" class="spectral-values">
-            <div v-for="index in spectralValues" :key="index.key" class="spectral-value" :title="index.label + ': promedio válido de la parcela'">
-              <small>{{ index.title }} <abbr :title="'Índice ' + index.label">{{ index.label }}</abbr></small>
-              <strong>{{ formatSpectral(index.value) }}</strong>
+          <div v-if="spectralValues.length || imageryHistory.length>1" class="spectral-comparison-grid" :class="{'has-history':imageryHistory.length>1}">
+            <SpectralHistory v-if="imageryHistory.length>1" variant="modern" :scenes="imageryHistory" :selected-scene-id="spectralScene?.id" />
+            <div class="spectral-evidence">
+              <div class="spectral-evidence-heading"><span class="spectral-evidence-label">INDICADORES DE LA CAPTURA</span><p>Imagen e índices disponibles para la fecha indicada.</p></div>
+              <div v-if="spectralScene" class="spectral-meta"><span>Imagen: {{ dateLabel(spectralScene.captured_at) }}</span><span v-if="spectralScene.data_warning">{{ spectralScene.data_warning }}</span></div>
+              <div v-if="spectralValues.length" class="spectral-values">
+                <div v-for="index in spectralValues" :key="index.key" class="spectral-value" :title="index.label + ': promedio válido de la parcela'">
+                  <small>{{ index.title }} <abbr :title="'Índice ' + index.label">{{ index.label }}</abbr></small>
+                  <strong>{{ formatSpectral(index.value) }}</strong>
+                </div>
+              </div>
+              <p v-if="spectralScene" class="spectral-analysis-selection">Próximo análisis IA: imagen del {{ dateLabel(spectralScene.captured_at) }} con sus indicadores.</p>
+              <p v-if="context?.satellite && spectralScene?.id !== context.satellite.id" class="spectral-progress">El análisis guardado usa la imagen del {{ dateLabel(context.satellite.captured_at) }}. Pulse Analizar para usar la selección actual.</p>
             </div>
           </div>
           <p v-else-if="!satelliteBusy" class="spectral-empty">Todavía no hay índices confiables para mostrar. La disponibilidad depende de la fecha de paso del satélite, las nubes y el servicio Copernicus; no se mostrarán cifras inventadas.</p>
-          <div v-if="spectralScene" class="spectral-meta"><span>Imagen: {{ dateLabel(spectralScene.captured_at) }}</span><span v-if="spectralScene.data_warning">{{ spectralScene.data_warning }}</span></div>
           <div class="spectral-actions">
-            <label v-if="imageryPreview.state.value?.history?.length && previewEnabled"><span class="label">Fecha de la imagen</span><select v-model="imageryPreview.selected.value" class="select"><option v-for="scene in imageryPreview.state.value.history" :key="scene.id" :value="scene.id">{{ dateLabel(scene.captured_at) }}</option></select></label>
-            <button v-if="previewEnabled" type="button" class="btn btn-light" :disabled="imageryPreview.loading.value" @click="imageryPreview.load()">{{ imageryPreview.loading.value ? 'Consultando…' : 'Actualizar imágenes' }}</button>
+            <p v-if="previewEnabled && imageryPreview.state.value?.message" role="status" class="spectral-progress">{{ imageryPreview.state.value.message }}</p>
+            <button type="button" class="btn btn-light latest-imagery-button" :disabled="satelliteQuerying || !!busy || agentsRunning" @click="consultLatestImagery"><RefreshCw :class="{ spin: satelliteQuerying }" />{{ satelliteQuerying ? 'Consultando imagen…' : 'Traer imágenes de Copernicus' }}</button>
+            <p v-if="!previewEnabled && savedImagery.message.value" role="status" class="spectral-progress">{{ savedImagery.message.value }}</p>
+            <p v-if="!previewEnabled && savedImagery.error.value" role="alert" class="spectral-warning">{{ savedImagery.error.value }}</p>
           </div>
-          <SpectralHistory v-if="previewEnabled && imageryPreview.state.value?.history" :scenes="imageryPreview.state.value.history" />
           <small>Los índices son indicios obtenidos por satélite, no diagnósticos de enfermedades o de humedad del suelo. La estación Meteorológica se determina por la cobertura de la parcela.</small>
         </section>
         <p v-if="!mapGeometry" class="flow-hint">1. Dibuje el polígono de su parcela en el mapa para comenzar.</p>
@@ -1018,10 +1098,13 @@ onBeforeUnmount(() => {
           <span v-for="station in coveragePreview.station_influences" :key="station.station_id">{{ station.name }} ({{ station.coverage_pct.toFixed(1) }}%)</span>
         </p>
         <p v-else-if="mapGeometry && coveragePreview" class="no-influence">Ninguna estación con área de influencia configurada alcanza esta parcela.</p>
+        <div class="analysis-action">
         <button class="btn btn-primary analyze-map" :disabled="!mapCanAnalyze" @click="analyzeDrawnParcel">
           <RefreshCw :class="{ spin: busy === 'analysis' || agentsRunning }" />
-          {{ busy === 'analysis' ? 'Calculando parcela…' : agentsRunning ? 'Agentes completando widgets…' : 'Analizar y completar widgets' }}
+          {{ busy === 'analysis' ? 'Generando análisis IA…' : agentsRunning ? 'Completando análisis IA…' : analysis ? 'Nuevo análisis IA' : 'Análisis IA' }}
         </button>
+        <small v-if="analysis" class="last-analysis-time">Último análisis: <time :datetime="analysis.created_at">{{ dateLabel(analysis.created_at) }}</time></small>
+        </div>
 
       </div>
     </section>
@@ -1041,32 +1124,29 @@ onBeforeUnmount(() => {
         </button></EmptyState
       >
       <template v-else>
-        
         <EmptyState
           v-if="!analysis && busy !== 'analysis' && !agentsRunning"
           title="Su parcela está lista"
-          message="Pulse Analizar y completar widgets para consultar las lecturas guardadas y completar los siete pasos de su consulta."
+          message="Pulse Análisis IA para consultar los datos de su parcela y generar las recomendaciones."
         />
         <template v-if="analysis && context && !agentsRunning">
           <p v-if="!currentSnapshot" class="banner">
-            Este análisis corresponde a una configuración anterior. Pulse Analizar parcela para actualizarlo.
+            Este análisis corresponde a una configuración anterior. Pulse Nuevo análisis IA para actualizarlo.
           </p>
-          <div class="snapshot-line">
+          <section class="analysis-results-card" aria-label="Análisis de la parcela">
+          <header class="snapshot-line">
             <span>Situación al {{ dateLabel(analysis.reference_at) }} · {{ context.crop.name }}</span>
             <span class="analyzed-period">Período analizado: {{ analysisHours }} horas</span>
-          </div>
-          <p class="viewer-time-note">{{ viewerZoneLabel }} <InfoHint text="Las horas se convierten a la zona de su dispositivo. La lectura original, su antigüedad y las ventanas de análisis no cambian. La fecha de siembra y los días de pronóstico conservan su fecha de calendario." /></p>
+          </header>
           <div class="widget-grid steps-flow" aria-label="Resumen de la parcela">
-            <section class="panel widget current-conditions">
-              <span class="widget-kicker">1. Condiciones actuales</span>
+            <section class="panel widget current-conditions" :class="{ 'widget-collapsed': collapsedWidgets[1] }">
+              <button type="button" class="widget-kicker widget-collapse-toggle" :aria-expanded="!collapsedWidgets[1]" :aria-controls="`${widgetIdPrefix}-widget-1`" @click="toggleWidget(1)">
+                <span class="widget-title">1. Condiciones actuales</span>
+                <span class="widget-collapse-action" aria-hidden="true">{{ collapsedWidgets[1] ? 'Mostrar' : 'Ocultar' }}<ChevronDown :class="{ collapsed: collapsedWidgets[1] }" /></span>
+              </button>
+              <div v-show="!collapsedWidgets[1]" :id="`${widgetIdPrefix}-widget-1`" class="widget-body">
               <h2>El clima que influye en su parcela</h2>
-              <div v-if="prioritizedInfluence" class="station-attribution" role="status">
-                <InfoHint class="station-source-info" :text="prioritizedReason" />
-                <span class="source-symbol"><MapPinned aria-hidden="true" /></span>
-                <div><strong>Tu parcela consultó datos de {{ prioritizedInfluence.name }}</strong></div>
-              </div>
-              <p v-else class="banner">Ninguna estación cubre todavía este terreno. Revise las áreas de influencia configuradas en el CMS.</p>
-              <StationReadingsStrip
+             <StationReadingsStrip
                 v-for="row in orderedReadings" :key="row.station_id"
                 :observation="row"
                 :influence="context.station_influences.find(item => item.station_id === row.station_id)"
@@ -1074,9 +1154,14 @@ onBeforeUnmount(() => {
                 :technical="technical"
               />
               <template v-for="row in context.raw_readings" :key="`soil-${row.station_id}`"><div v-if="row.soil_tension || row.sensor_units?.soil_moisture_pct === 'cb'" class="soil-visible"><h3>Secado del suelo <InfoHint text="La tensión indica la fuerza que deben ejercer las raíces para extraer agua del suelo. No es lo mismo que humedad porcentual. Revise el rango calibrado para este sensor." /></h3><SoilTensionCard :tension="row.soil_tension" :station="row.name" :sampled-at="dateLabel(String(row.reading?.sampled_at || ''))" /></div></template>
+              </div>
             </section>
-            <section class="panel widget alert-widget" :class="tone" aria-label="Estado y condiciones de la alerta">
-              <span class="widget-kicker">2. Tipo de alerta · {{ analysisHours }} horas</span>
+            <section class="panel widget alert-widget" :class="[tone, { 'widget-collapsed': collapsedWidgets[2] }]" aria-label="Estado y condiciones de la alerta">
+              <button type="button" class="widget-kicker widget-collapse-toggle" :aria-expanded="!collapsedWidgets[2]" :aria-controls="`${widgetIdPrefix}-widget-2`" @click="toggleWidget(2)">
+                <span class="widget-title">2. Tipo de alerta · {{ analysisHours }} horas</span>
+                <span class="widget-collapse-action" aria-hidden="true">{{ collapsedWidgets[2] ? 'Mostrar' : 'Ocultar' }}<ChevronDown :class="{ collapsed: collapsedWidgets[2] }" /></span>
+              </button>
+              <div v-show="!collapsedWidgets[2]" :id="`${widgetIdPrefix}-widget-2`" class="widget-body">
               <div class="alert-columns"><div class="alert-summary">
               <div class="severity-banner" :class="tone" role="status">
                 <div class="severity-icon"><CheckCircle2 v-if="tone === 'good'" /><AlertTriangle v-else /></div>
@@ -1128,9 +1213,14 @@ onBeforeUnmount(() => {
                 <div v-for="station in window?.stations" :key="`quality-${station.station_id}`"><h3>Calidad de datos · {{ context.station_influences.find(item => item.station_id === station.station_id)?.name }}</h3><DataQualityCard v-if="station.quality" :quality="station.quality" /></div>
               </details>
               </div></div>
+              </div>
             </section>
-            <section class="panel widget">
-              <span class="widget-kicker">3. Estado fenológico</span>
+            <section class="panel widget" :class="{ 'widget-collapsed': collapsedWidgets[3] }">
+              <button type="button" class="widget-kicker widget-collapse-toggle" :aria-expanded="!collapsedWidgets[3]" :aria-controls="`${widgetIdPrefix}-widget-3`" @click="toggleWidget(3)">
+                <span class="widget-title">3. Estado fenológico</span>
+                <span class="widget-collapse-action" aria-hidden="true">{{ collapsedWidgets[3] ? 'Mostrar' : 'Ocultar' }}<ChevronDown :class="{ collapsed: collapsedWidgets[3] }" /></span>
+              </button>
+              <div v-show="!collapsedWidgets[3]" :id="`${widgetIdPrefix}-widget-3`" class="widget-body">
               <h2>{{ context.phenology.stage_name }}</h2>
               <p>{{ context.phenology.days_after_planting }} días desde la siembra</p>
               <p>{{ widgetSummary(context.phenology.description) }}</p>
@@ -1142,60 +1232,44 @@ onBeforeUnmount(() => {
                   {{ dateLabel(stage.estimated_end_date) }}
                 </p>
               </details>
+              </div>
             </section>
-            <section class="panel widget diagnosis">
-              <span class="widget-kicker">4. Análisis de la IA</span>
-              <h2>Qué revisar hoy</h2>
+            <section class="panel widget diagnosis" :class="{ 'widget-collapsed': collapsedWidgets[4] }">
+              <button type="button" class="widget-kicker widget-collapse-toggle" :aria-expanded="!collapsedWidgets[4]" :aria-controls="`${widgetIdPrefix}-widget-4`" @click="toggleWidget(4)">
+                <span class="widget-title">4. Análisis de la IA</span>
+                <span class="widget-collapse-action" aria-hidden="true">{{ collapsedWidgets[4] ? 'Mostrar' : 'Ocultar' }}<ChevronDown :class="{ collapsed: collapsedWidgets[4] }" /></span>
+              </button>
+              <div v-show="!collapsedWidgets[4]" :id="`${widgetIdPrefix}-widget-4`" class="widget-body">
+              <h2>Qué está pasando y qué hacer en su parcela</h2>
               <div class="diagnosis-timeframes"><span>Observado: últimas {{ analysisHours }} horas</span><span>Pronóstico: próximos 3 días</span></div>
-              <ParcelInterpretation v-if="chatVisibleResults('ORCHESTRATOR')" :result="chatVisibleResults('ORCHESTRATOR')!" />
+              <ParcelInterpretation v-if="parcelGuidance" :result="parcelGuidance" />
               <p v-else>
-                Interprete las alertas, la etapa y la evidencia de esta parcela para orientar su próxima
-                revisión.
+                Genere la interpretación para entender qué muestran el clima, el cultivo y la imagen,
+                qué merece atención y qué acciones conviene priorizar.
               </p>
+              <aside v-if="parcelGuidance?.status === 'completed' && parcelGuidance.field_review" class="field-review" aria-label="Zona sugerida para revisar en campo">
+                <h3>Una zona que conviene comprobar</h3>
+                <p>{{ parcelGuidance.field_review.reason }}</p>
+                <p><strong>Qué comprobar:</strong> {{ parcelGuidance.field_review.check }}</p>
+                <a :href="parcelGuidance.field_review.maps_url" target="_blank" rel="noopener noreferrer" class="btn btn-light"><MapPinned /> Ver ubicación para la revisión</a>
+                <small>Es una referencia para comprobar en campo, no un daño confirmado.</small>
+              </aside>
               <button class="btn btn-primary" :disabled="!!busy" @click="interpret('ORCHESTRATOR')">
                 <Bot /> {{ busy === 'ORCHESTRATOR' ? 'Interpretando…' : chatVisibleResults('ORCHESTRATOR') ? 'Actualizar recomendaciones' : 'Generar recomendaciones' }}
               </button>
               <details><summary>Posibles enfermedades y evidencia agronómica</summary><ul v-if="diseaseNames.length"><li v-for="name in diseaseNames" :key="name">{{ name }}</li></ul><p v-else>{{ window?.level === 'DATOS_INSUFICIENTES' ? 'La evaluación está limitada por las condiciones sin dato compatible.' : 'Las reglas no señalaron enfermedades posibles con los datos disponibles.' }} Estas señales requieren revisión en campo.</p><small>Se cruzan clima, etapa del cultivo, imágenes y documentos técnicos. Una señal de riesgo no confirma una enfermedad.</small></details>
+              <div v-if="parcelGuidance && parcelGuidance.status !== 'disabled'" class="guidance-chat">
+                <p>Puede profundizar en estas recomendaciones y compartir lo que observa en el terreno.</p>
+                <button type="button" class="btn btn-light" @click="continueAnalysisInChat"><MessageCircle /> Profundizar en el chat</button>
+              </div>
+              </div>
             </section>
-            <section class="panel widget">
-              <span class="widget-kicker">5. Interpretación e imagen de su polígono</span>
-              <h2>Explore su parcela y sus indicadores</h2>
-              <ParcelSatelliteViewer public-access :plot-id="context.plot.id" :geometry="context.plot.geojson" :initial-satellite="context.satellite" />
-              <p v-if="context.satellite?.data_warning" class="banner">
-                {{ context.satellite.data_warning }}
-              </p>
-              <p>
-                {{
-                  context.inspection_point.method === 'lowest_valid_ndvi_pixel'
-                    ? 'Punto de menor vigor observado en los píxeles válidos. Verifique qué ocurre en campo.'
-                    : 'Punto de referencia dentro de la parcela; aún no hay una anomalía localizada verificable.'
-                }}
-              </p>
-              <a
-                :href="context.inspection_point.maps_url"
-                target="_blank"
-                rel="noopener"
-                class="btn btn-light"
-                ><MapPinned /> Abrir punto en Maps</a
-              >
-              <details v-if="technical">
-                <summary>Datos técnicos: índices y radar</summary>
-                <p>
-                  NDVI {{ context.satellite?.ndvi ?? '—' }} · NDMI {{ context.satellite?.ndmi ?? '—' }} · NDWI
-                  {{ context.satellite?.ndwi ?? '—' }}
-                </p>
-                <p v-if="context.radar">
-                  Sentinel-1 · {{ dateLabel(context.radar.captured_at) }} · VV {{ context.radar.vv_mean }} /
-                  VH {{ context.radar.vh_mean }} (gamma0 lineal)
-                </p>
-                <p v-else>Sin observación Sentinel-1 procesada.</p>
-              </details>
-              <button class="text-action" :disabled="!!busy" @click="interpret('SATELLITE_ANALYSIS')">
-                Interpretar satélite</button
-              ><ParcelInterpretation :result="chatVisibleResults('SATELLITE_ANALYSIS')" />
-            </section>
-            <section class="panel widget forecast">
-              <span class="widget-kicker">6. Predicción</span>
+            <section class="panel widget forecast" :class="{ 'widget-collapsed': collapsedWidgets[5] }">
+              <button type="button" class="widget-kicker widget-collapse-toggle" :aria-expanded="!collapsedWidgets[5]" :aria-controls="`${widgetIdPrefix}-widget-5`" @click="toggleWidget(5)">
+                <span class="widget-title">5. Predicción</span>
+                <span class="widget-collapse-action" aria-hidden="true">{{ collapsedWidgets[5] ? 'Mostrar' : 'Ocultar' }}<ChevronDown :class="{ collapsed: collapsedWidgets[5] }" /></span>
+              </button>
+              <div v-show="!collapsedWidgets[5]" :id="`${widgetIdPrefix}-widget-5`" class="widget-body">
               <h2>Prepárese para los próximos 3 días</h2>
               <div v-if="context.forecast.days.length" class="forecast-days">
                 <article v-for="day in context.forecast.days" :key="day.date">
@@ -1205,7 +1279,7 @@ onBeforeUnmount(() => {
                 </article>
               </div>
               <p v-else>El pronóstico no está disponible. Vuelva a analizar más tarde.</p>
-              <small>Pronóstico Open-Meteo para los próximos 3 días, contrastado con la tendencia histórica disponible de las estaciones. La regresión se calcula en Python y no sustituye el pronóstico.</small>
+              <small>Previsión para los próximos 3 días en su parcela. La lluvia anunciada puede cambiar; compruebe las condiciones antes de realizar labores.</small>
               <details v-if="technical">
                 <summary>Regresión sobre el historial de las estaciones</summary>
                 <article v-for="trend in context.historical_regression" :key="trend.station_id">
@@ -1222,8 +1296,13 @@ onBeforeUnmount(() => {
               <button class="text-action" :disabled="!!busy" @click="interpret('WEATHER_ANALYSIS')">
                 Interpretar pronóstico</button
               ><ParcelInterpretation :result="chatVisibleResults('WEATHER_ANALYSIS')" />
+              </div>
             </section>
-            <section class="panel widget chat whatsapp-chat" aria-label="Chat de FECOCLIMA IA"><span class="widget-kicker sr-only">7. Chatbot</span>
+            <section id="parcel-analysis-chat" class="panel widget chat whatsapp-chat" :class="{ 'widget-collapsed': collapsedWidgets[6] }" aria-label="Chat de FECOCLIMA IA"><button type="button" class="widget-kicker widget-collapse-toggle" :aria-expanded="!collapsedWidgets[6]" :aria-controls="`${widgetIdPrefix}-widget-6`" @click="toggleWidget(6)">
+                <span class="widget-title">6. Chatbot</span>
+                <span class="widget-collapse-action" aria-hidden="true">{{ collapsedWidgets[6] ? 'Mostrar' : 'Ocultar' }}<ChevronDown :class="{ collapsed: collapsedWidgets[6] }" /></span>
+              </button>
+              <div v-show="!collapsedWidgets[6]" :id="`${widgetIdPrefix}-widget-6`" class="widget-body">
               <div class="wa-header">
                 <span class="wa-avatar"><MessageCircle aria-hidden="true" /></span>
                 <div class="wa-contact"><strong>FECOCLIMA IA · Asistente de campo</strong><small>Conversación sobre su parcela · {{ analysisHours }} horas</small></div>
@@ -1247,7 +1326,7 @@ onBeforeUnmount(() => {
                       <span v-else>{{ file.filename }}</span>
                     </div>
                   </div>
-                  <small v-if="message.status === 'fallback'" class="wa-source">Respuesta basada en información disponible</small>
+                  <AiStatusNotice v-if="message.status === 'fallback'" status="fallback" :reason="message.fallback_reason" />
                 </article>
                 <article v-if="busy === 'chat' && pendingChatText" class="user"><b>Usted</b><p>{{ pendingChatText }}</p></article>
                 <span v-if="busy === 'chat'" class="wa-typing" role="status"><span class="typing-dots" aria-hidden="true"><i /><i /><i /></span><span>{{ preparingChatImages ? 'Preparando fotografía…' : 'Preparando respuesta' }}</span></span>
@@ -1270,8 +1349,10 @@ onBeforeUnmount(() => {
                 <small v-if="audioError" class="wa-error" role="alert">{{ audioError }}</small>
                 <small class="wa-hint">Enter para enviar · Mayús + Enter para otra línea · Hasta 4 fotos (se optimizan al enviar) y 4 adjuntos (12 MB por archivo).</small>
               </form>
+              </div>
             </section>
           </div>
+          </section>
         </template>
       </template>
 
@@ -1351,6 +1432,9 @@ onBeforeUnmount(() => {
   height: clamp(340px, 51vh, 500px);
 }
 .map-frame { min-width:0; height:auto; }
+@media(min-width:1024px){
+  .map-frame :deep(.world-map-component:not(:fullscreen) > .world-map-shell:not(.compatibility-mode)){height:clamp(600px,76vh,820px);min-height:600px}
+}
 .map-query-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1923,12 +2007,7 @@ dd {
 }
 /* Los widgets 2 y 3 ocupan toda la fila, para que sus indicadores sean legibles. */
 .steps-flow > .widget:nth-child(2), .steps-flow > .widget:nth-child(3) { grid-column: 1 / -1; }
-@media (min-width: 801px) {
-  .steps-flow > .widget:nth-child(5), .steps-flow > .widget:nth-child(6) { grid-column: auto; }
-}
-@media (max-width: 800px) {
-  .steps-flow > .widget:nth-child(5), .steps-flow > .widget:nth-child(6) { grid-column: 1 / -1; }
-}
+.steps-flow > .forecast { grid-column: 1 / -1; }
 .current-conditions { overflow: visible; }
 .steps-flow .widget :deep(details.info-hint) { width: auto; display: inline-flex; flex: 0 0 auto; border: 0; padding: 0; margin: 0; }
 .soil-visible { width: 100%; padding-top: 12px; border-top: 1px solid var(--fc-border); }
@@ -2000,8 +2079,10 @@ dd {
 .spectral-values{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px}
 .spectral-value{border-radius:13px;background:#fff;border:1px solid #deebf0;padding:13px;box-shadow:0 3px 11px #1540550e;display:flex;flex-direction:column;gap:6px}
 .spectral-value small{color:#537183;font-weight:650}.spectral-value abbr{border:0;color:#587c91;font-size:.65rem}.spectral-value strong{font-size:1.46rem;font-weight:850;color:#0b5d63;font-variant-numeric:tabular-nums}
+ .spectral-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:stretch}.spectral-comparison-grid.has-history{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}.spectral-evidence{display:flex;flex-direction:column;gap:14px;min-width:0;padding:4px 0}.spectral-evidence-heading{display:grid;gap:7px}.spectral-evidence-label{font-size:.68rem;font-weight:800;letter-spacing:.1em;color:#5c827f}.spectral-evidence-heading p{font-size:.84rem;line-height:1.5;color:#3c626a}.spectral-evidence .spectral-values{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.spectral-evidence .spectral-value{padding:11px 12px;box-shadow:0 2px 8px #15405506;border-color:#dfebe7;border-radius:12px;gap:5px}.spectral-evidence .spectral-value strong{font-size:1.32rem;color:#175e5b}.spectral-evidence .spectral-value small{font-size:.68rem;line-height:1.4}.spectral-evidence .spectral-value abbr{display:block;font-size:.62rem;letter-spacing:.06em;margin-top:2px;color:#79918f}.spectral-evidence .spectral-analysis-selection{font-size:.73rem;line-height:1.5;color:#6b8388}.spectral-evidence .spectral-meta{padding:8px 11px;border-radius:9px;background:#e9f3ef;color:#476b65;font-size:.73rem;line-height:1.4}
 .spectral-meta{display:flex;flex-wrap:wrap;gap:10px;color:#4f6978;font-size:.77rem}.spectral-actions{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.spectral-actions label{min-width:170px}.spectral-empty{margin:0;color:#536f79}.spectral-progress{margin:0;color:#17586a;font-weight:650}.spectral-warning{color:#a53b2b}
-@media(max-width:640px){.spectral-heading{flex-direction:column}.spectral-values{grid-template-columns:repeat(2,minmax(0,1fr))}.imagery-preview-status{padding:12px}}
+@media(max-width:900px){.spectral-comparison-grid.has-history{grid-template-columns:minmax(0,1fr)}.spectral-evidence{padding:0}}
+@media(max-width:640px){.spectral-evidence .spectral-values{grid-template-columns:repeat(2,minmax(0,1fr))}.spectral-heading{flex-direction:column}.spectral-values{grid-template-columns:repeat(2,minmax(0,1fr))}.imagery-preview-status{padding:12px}}
 </style>
 
 <style scoped>
@@ -2029,9 +2110,40 @@ dd {
 </style>
 
 <style scoped>
-.viewer-time-note{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:6px 0 12px;color:var(--fc-text-muted);font-size:.75rem}
+
+.field-review{display:grid;gap:10px;padding:16px;border:1px solid #d5e5ce;border-radius:14px;background:#f4f9f0}.field-review h3,.field-review p{margin:0}.field-review small{color:var(--fc-text-muted);line-height:1.5}.field-review .btn{justify-self:start}
+.guidance-chat{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding-top:14px;border-top:1px solid var(--fc-border)}.guidance-chat p{flex:1;min-width:220px;margin:0;color:var(--fc-text-muted);line-height:1.5}.guidance-chat .btn{white-space:normal;text-align:left}
+#parcel-analysis-chat{scroll-margin-top:90px}
 </style>
 
 <style scoped>
 .wa-typing{display:flex;align-items:center;gap:10px}.typing-dots{display:flex;gap:4px}.typing-dots i{width:6px;height:6px;border-radius:50%;background:#408ebd;animation:chat-pulse 1.2s ease-in-out infinite}.typing-dots i:nth-child(2){animation-delay:.15s}.typing-dots i:nth-child(3){animation-delay:.3s}@keyframes chat-pulse{0%,80%,100%{opacity:.35;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}@media(prefers-reduced-motion:reduce){.typing-dots i{animation:none}}
+</style>
+
+<style scoped>
+.widget-body{display:contents}
+.steps-flow>.widget>.widget-collapse-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:8px 11px;border:0;text-align:left;font:inherit;font-size:.75rem;font-weight:750;cursor:pointer;letter-spacing:.02em}
+.widget-collapse-toggle:hover{background:#deedf7!important}
+.widget-collapse-toggle:focus-visible{outline:3px solid #378cc4;outline-offset:3px}
+.widget-title{min-width:0}
+.widget-collapse-action{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;font-size:.7rem;font-weight:600;letter-spacing:0}
+.widget-collapse-action svg{width:17px;height:17px;transform:rotate(180deg)}
+.widget-collapse-action svg.collapsed{transform:rotate(0)}
+.steps-flow>.whatsapp-chat>.widget-collapse-toggle{border-radius:0;padding:10px 18px}
+</style>
+
+<style scoped>
+.analysis-action{grid-column:1/-1;width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:7px}
+.last-analysis-time{font-size:.72rem;color:var(--fc-text-muted);line-height:1.5}
+.analysis-results-card{min-width:0;margin-top:20px;padding:0 18px 18px;border:1px solid #d5e5ef;border-radius:23px;background:#f3f8fb;box-shadow:0 5px 22px #15426208}
+.analysis-results-card>.snapshot-line{margin:0 -18px 18px;padding:16px 20px;border:0;border-bottom:1px solid #d5e5ef;border-radius:23px 23px 0 0;background:linear-gradient(110deg,#e3f0f8,#f7fbfe);box-shadow:none;color:var(--fc-primary-strong);font-weight:650;gap:10px 18px}
+.analysis-results-card .analyzed-period{font-size:.75rem;font-weight:500;color:var(--fc-text-muted)}
+.workspace-top-controls .parcel-alerts-button{gap:6px;border-color:#c7dfd5;background:#edf7f2;color:#246649;font-size:.72rem;white-space:nowrap}
+.workspace-top-controls .parcel-alerts-button:hover{background:#deefe5}
+@media(max-width:700px){.analysis-results-card{padding:0 9px 9px;border-radius:19px}.analysis-results-card>.snapshot-line{margin:0 -9px 12px;padding:13px;border-radius:19px 19px 0 0;font-size:.79rem}.last-analysis-time{font-size:.68rem}}
+</style>
+
+<style scoped>
+.steps-flow>.widget.widget-collapsed{padding:12px!important;gap:0!important;border-width:1px!important}
+.steps-flow>.widget.widget-collapsed>.widget-collapse-toggle{min-height:48px;padding:8px 11px;border-radius:8px;line-height:1.4}
 </style>

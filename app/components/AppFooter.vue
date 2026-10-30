@@ -1,3 +1,7 @@
+<script setup lang="ts">
+const { zoneLabel } = useViewerTime()
+</script>
+
 <template>
     <footer class="footer">
         <div class="container">
@@ -6,6 +10,7 @@
                 <NuxtLink to="/fecoclima-ia">Política de privacidad</NuxtLink>
                 <span>FECOCLIMA IA © 2026</span>
             </div>
+            <p class="footer-time-zone">{{ zoneLabel }} <InfoHint text="Las horas se convierten a la zona de su dispositivo. La lectura original, su antigüedad y las ventanas de análisis no cambian. La fecha de siembra y los días de pronóstico conservan su fecha de calendario." /></p>
             <div class="developer-credit">
                 Desarrollado con 💻 y ☕ por Reymond E. Rojas Núñez || IICA PDTAF
             </div>
@@ -28,6 +33,8 @@
         gap: 20px;
         font-size: .88rem;
     }
+
+    .footer-time-zone{display:flex;align-items:center;gap:5px;margin:4px 0;font-size:.73rem;color:#e4eef5}
 
     .developer-credit {
         text-align: right;

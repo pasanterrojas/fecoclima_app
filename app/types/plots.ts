@@ -84,9 +84,19 @@ export interface StationWindow {
   quality?: { completion_percentage: number; record_completeness_percentage: number; variable_completeness_percentage: number; missing_variables: string[]; outliers: number; notes?: string[] }
 }
 export interface Interpretation {
+  field_review?: {
+    maps_url: string
+    latitude: number
+    longitude: number
+    captured_at: string
+    reason: string
+    check: string
+  }
   allowed_widgets?: string[]
   sources?: { document: string; page_or_section?: string }[]
   markdown: string
+  text_complete?: boolean
+  max_characters?: number
   status: string
   purpose: string
   fallback_reason?: string
@@ -98,6 +108,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   status?: string
+  fallback_reason?: string | null
+  model?: string | null
   images?: { filename: string; url?: string; content_type?: string }[]
   attachments?: { filename: string; url?: string; content_type?: string; size?: number }[]
 }
@@ -145,6 +157,7 @@ export interface ParcelAnalysis {
       data_warning?: string
       indices?: Record<string, number | null>
     } | null
+    satellite_selection?: { mode: 'selected' | 'latest'; observation_id: string | null }
     radar?: { captured_at: string; vv_mean: number; vh_mean: number; valid_pixels: number } | null
     inspection_point: {
       latitude: number

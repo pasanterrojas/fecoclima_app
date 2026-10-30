@@ -1,3 +1,4 @@
+import { resolveImageryScene } from '~/utils/imageryHistory'
 import type { Geometry, ParcelAnalysis } from '~/types/plots'
 
 type Scene = NonNullable<ParcelAnalysis['context']['satellite']>
@@ -7,18 +8,18 @@ export function useParcelImagery(geometry:Ref<Geometry|null>, enabled:Ref<boolea
   const {request}=usePublicParcelApi()
   const state=ref<ParcelImageryPreview|null>(null), selected=ref(''), loading=ref(false), error=ref('')
   const pollingPaused=ref(false)
-  const scene=computed(()=>state.value?.history?.find(item=>item.id===selected.value) || state.value?.satellite || null)
+  const scene=computed(()=>resolveImageryScene(state.value?.history || [], selected.value) || state.value?.satellite || null)
   let generation=0, timer:ReturnType<typeof setTimeout>|undefined, poll:ReturnType<typeof setTimeout>|undefined
-  async function load(){
+  async function load(force = false){
     if(!geometry.value || !enabled.value)return
     const ticket=++generation
     loading.value=true;error.value='';pollingPaused.value=false
     if(poll)clearTimeout(poll)
     try{
-      const result=await request<ParcelImageryPreview>('/public/parcel-imagery',{method:'POST',body:{geojson:geometry.value}})
+      const result=await request<ParcelImageryPreview>(`/public/parcel-imagery${force ? '?force=true' : ''}`,{method:'POST',body:{geojson:geometry.value}})
       if(ticket!==generation)return
       state.value=result
-      selected.value=result.satellite?.id || ''
+      selected.value=''
       if(result.status==='PROCESSING' && result.id) schedule(result.id,ticket,0)
     }catch(exception:any){if(ticket===generation)error.value=exception?.response?.status===404
         ? 'El servidor API activo no reconoce la vista de imágenes. Verifique que esté ejecutando la última versión del backend y la ruta /api/v1/public/parcel-imagery.'
@@ -36,7 +37,6 @@ export function useParcelImagery(geometry:Ref<Geometry|null>, enabled:Ref<boolea
         if(ticket!==generation)return
         state.value=result
         error.value=''
-        if(!selected.value)selected.value=result.satellite?.id || ''
         if(result.status==='PROCESSING')schedule(id,ticket,attempt+1)
       }catch{if(ticket===generation){error.value='No se pudo comprobar el estado de las imágenes. Reintentaremos automáticamente.';schedule(id,ticket,attempt+1)}}
     },attempt<40?3000:15000)
@@ -56,7 +56,7 @@ export function useParcelImagery(geometry:Ref<Geometry|null>, enabled:Ref<boolea
     if(timer)clearTimeout(timer)
     if(poll)clearTimeout(poll)
     if(geometry.value && enabled.value)timer=setTimeout(()=>void load(),800)
-  },{deep:true})
+  },{deep:true,immediate:true})
   onBeforeUnmount(()=>{generation++;if(timer)clearTimeout(timer);if(poll)clearTimeout(poll)})
   return {state,scene,selected,loading,error,pollingPaused,load,stop}
 }

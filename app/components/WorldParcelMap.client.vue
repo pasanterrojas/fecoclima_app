@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Compass, Droplets, Eye, EyeOff, Layers, Leaf, LocateFixed, Map as MapIcon, MapPinned, Maximize2, MousePointer2, Satellite, SlidersHorizontal, Sparkles } from 'lucide-vue-next'
+import { recentImageryScenes, imagerySceneLabels } from '~/utils/imageryHistory'
 import { stationMapCoordinates, stationDisplayColor, weatherStationIconUrl } from '~/utils/stations'
 import { openSatelliteBasemap, streetBasemap, navigationOverlay, rasterBasemapStyle, type RasterBasemap } from '~/utils/mapBasemaps'
 import * as maplibregl from 'maplibre-gl'
@@ -22,6 +24,9 @@ const props = defineProps<{
   selectionDisabled?: boolean
   coverage?: number | null
   imagery?: SpectralVisualization & { captured_at: string; index_images?: Record<string, string | null> } | null
+  imageryScenes?: { id: string; captured_at: string }[]
+  selectedImageryId?: string
+  imageryHistoryLoading?: boolean
   overview?: boolean
   readOnly?: boolean
   confirmClear?: boolean
@@ -32,10 +37,29 @@ const emit = defineEmits<{
   'update:modelValue': [geometry: Geometry | null]
   drawn: [geometry: Geometry | null]
   'select-parcel': [id: string]
+  'select-imagery': [id: string]
 }>()
 const runtime = useRuntimeConfig()
-const {dateOnly:sceneDate}=useViewerTime()
+const {dateOnly:sceneDate, zone:viewerZone}=useViewerTime()
+const recentScenes = computed(() => recentImageryScenes(props.imageryScenes || []))
+const sceneLabels = computed(() => imagerySceneLabels(recentScenes.value, viewerZone.value))
+function sceneLabel(scene: { id?: string; captured_at: string }) {
+  return sceneLabels.value.get(scene.id || '') || sceneDate(scene.captured_at)
+}
+const imageryMonths = computed(() => {
+  const groups = new Map<string, { label: string; scenes: { id: string; captured_at: string }[] }>()
+  const formatter = new Intl.DateTimeFormat('es', { month: 'long', year: 'numeric', timeZone: viewerZone.value })
+  for (const scene of recentScenes.value.slice(1)) {
+    const date = new Date(scene.captured_at)
+    if (!Number.isFinite(date.getTime())) continue
+    const label = formatter.format(date)
+    if (!groups.has(label)) groups.set(label, { label, scenes: [] })
+    groups.get(label)!.scenes.push(scene)
+  }
+  return [...groups.values()]
+})
 const { apiUrl } = useApi()
+const componentElement = ref<HTMLElement | null>(null)
 const mapElement = ref<HTMLElement | null>(null)
 const mapError = ref('')
 const mapLoaded = ref(false)
@@ -52,6 +76,17 @@ const editing = ref(false)
 const locating = ref(false)
 const imageryIndex = ref('rgb')
 const imageryOpacity = ref(0.75)
+const controlsOpen = ref(false)
+const sidebarHidden = ref(false)
+const sidebarId = useId()
+async function toggleSidebar() {
+  sidebarHidden.value = !sidebarHidden.value
+  if (!sidebarHidden.value) controlsOpen.value = true
+  await nextTick()
+  map?.resize()
+}
+onMounted(() => { controlsOpen.value = window.matchMedia('(min-width: 1024px)').matches })
+const controlsTab = ref<'map' | 'copernicus'>('map')
 const activeLegend = computed(() => props.imagery?.index_legends?.[imageryIndex.value])
 const openFreeMapStyle = 'https://tiles.openfreemap.org/styles/liberty'
 const showInfluence = ref(true)
@@ -108,6 +143,9 @@ const compatibilityEditor = ref<{fitAllParcels:()=>void;useCurrentLocation:()=>v
 let fittedParcelOverview = false
 let stationMarkers: maplibregl.Marker[] = []
 const imageryNames: Record<string, string> = { rgb: 'Color real', ndvi: 'NDVI', ndre: 'NDRE', ndmi: 'NDMI', ndwi: 'NDWI', evi: 'EVI', savi: 'SAVI', gndvi: 'GNDVI', nbr: 'NBR', msi: 'MSI', recl: 'ReCl' }
+const imageryLabels: Record<string, string> = { rgb: 'Color real', ndvi: 'Vegetación', ndre: 'Clorofila', ndmi: 'Humedad vegetal', ndwi: 'Agua en superficie', evi: 'Vegetación densa', savi: 'Vegetación y suelo', gndvi: 'Verdor', nbr: 'Cobertura vegetal', msi: 'Señal de sequedad', recl: 'Clorofila' }
+const imageryIcon = (key: string) => ['ndmi', 'ndwi', 'msi'].includes(key) ? Droplets : key === 'rgb' ? Satellite : Leaf
+const basemapLabel = computed(() => styleChoice.value === 'streets' ? 'Calles' : styleChoice.value === 'satellite-hd' ? 'Satélite HD' : 'Satélite')
 const availableImagery = computed(() => Object.entries(props.imagery?.index_images || {}).filter(([, url]) => !!url).map(([key]) => key))
 let map: MapLibreMap | null = null
 let geoman: Geoman | null = null
@@ -648,7 +686,7 @@ async function changeStyle(style: BasemapChoice) {
 }
 
 function fullscreen() {
-  const container = mapElement.value?.closest('.world-map-component')
+  const container = componentElement.value
   if (container && !document.fullscreenElement) void container.requestFullscreen()
   else if (document.fullscreenElement) void document.exitFullscreen()
 }
@@ -804,27 +842,84 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="world-map-component">
-    <details class="map-controls-menu">
-      <summary><span class="controls-menu-title"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg> Controles del mapa</span><span>{{ styleChoice === 'streets' ? 'Mapa abierto' : styleChoice === 'satellite-hd' ? 'Satélite HD' : 'Satélite' }} <span aria-hidden="true">⌄</span></span></summary>
-      <div class="map-controls-content">
-        <div class="map-tool-group" aria-label="Tipo de mapa">
-          <button type="button" :class="{active:styleChoice === 'satellite'}" :aria-pressed="styleChoice === 'satellite'" @click="changeStyle('satellite')">Satélite</button>
-          <button v-if="hasTilesKey" type="button" :disabled="hdLoading" :class="{active:styleChoice === 'satellite-hd'}" :aria-pressed="styleChoice === 'satellite-hd'" @click="changeStyle('satellite-hd')">{{ hdLoading ? 'Conectando HD…' : 'Satélite HD' }}</button>
-          <button type="button" :class="{active:styleChoice === 'streets'}" :aria-pressed="styleChoice === 'streets'" @click="changeStyle('streets')">Mapa abierto</button>
+  <div ref="componentElement" class="world-map-component" :class="{ 'menu-hidden': sidebarHidden }">
+    <div class="map-layout-toolbar">
+      <button type="button" class="map-menu-toggle" :aria-controls="sidebarId" :aria-expanded="!sidebarHidden" :aria-label="sidebarHidden ? 'Mostrar menú lateral' : 'Ocultar menú y ampliar mapa'" :title="sidebarHidden ? 'Volver a mostrar los controles y las parcelas' : 'Ocultar el menú para usar todo el ancho del mapa'" @click="toggleSidebar">
+        <ChevronRight v-if="sidebarHidden" aria-hidden="true" /><ChevronLeft v-else aria-hidden="true" />
+        <span>{{ sidebarHidden ? 'Mostrar menú' : 'Ampliar mapa' }}</span>
+      </button>
+    </div>
+    <div v-show="!sidebarHidden" :id="sidebarId" class="map-sidebar-controls">
+    <details class="map-controls-menu unified-map-controls" :open="controlsOpen" @toggle="controlsOpen = ($event.target as HTMLDetailsElement).open">
+      <summary>
+        <span class="controls-menu-title"><span class="controls-title-icon"><SlidersHorizontal aria-hidden="true" /></span><span><strong>Controles del mapa</strong><small>Vista del mapa · Capas Copernicus</small></span></span>
+        <span class="controls-current"><span>{{ basemapLabel }}<template v-if="imageryIndex && availableImagery.length"> · {{ imageryNames[imageryIndex] }}</template></span><ChevronDown class="controls-chevron" aria-hidden="true" /></span>
+      </summary>
+      <div class="controls-body">
+        <div class="controls-tabs" role="group" aria-label="Controles del mapa y Copernicus">
+          <button type="button" :class="{ active: controlsTab === 'map' }" :aria-pressed="controlsTab === 'map'" @click="controlsTab = 'map'"><MapIcon aria-hidden="true" /><span>Vista del mapa</span></button>
+          <button type="button" :class="{ active: controlsTab === 'copernicus' }" :aria-pressed="controlsTab === 'copernicus'" @click="controlsTab = 'copernicus'"><Layers aria-hidden="true" /><span>Capas Copernicus</span><span v-if="availableImagery.length" class="layer-count">{{ availableImagery.length }}</span></button>
         </div>
-        <button type="button" class="map-tool-button location-toggle" :disabled="!mapLoaded && !compatibilityMode" @click="locateMe">{{ locating ? 'Ubicando…' : 'Mi ubicación' }}</button>
-        <button type="button" class="map-tool-button influence-toggle" :aria-pressed="showInfluence" @click="showInfluence = !showInfluence">{{ showInfluence ? 'Ocultar influencia' : 'Mostrar influencia' }}</button>
-        <button type="button" class="map-tool-button" @click="fullscreen">Pantalla completa</button>
-        <button v-if="!compatibilityMode && styleChoice !== 'streets' && showLabels" class="map-tool-button detail-toggle" type="button" :aria-pressed="detailedLabels" @click="detailedLabels = !detailedLabels">{{ detailedLabels ? 'Detalle completo: localidades, caminos y referencias' : 'Activar más nombres y referencias' }}</button>
-        <button v-if="styleChoice !== 'streets'" type="button" class="map-tool-button labels-toggle" :aria-pressed="showLabels" @click="showLabels = !showLabels">{{ showLabels ? 'Ocultar nombres y calles' : 'Mostrar nombres y calles' }}</button>
-        <button type="button" class="map-tool-button scroll-toggle" :class="{active:scrollZoomEnabled}" :aria-pressed="scrollZoomEnabled" @click="scrollZoomEnabled = !scrollZoomEnabled">{{ scrollZoomEnabled ? 'Desactivar rueda del mouse' : 'Activar rueda del mouse' }}</button>
-        <small>{{ scrollZoomEnabled ? 'Rueda: acercar y alejar · Arrastrar: mover el mapa' : 'Arrastre para moverse. La rueda desplaza la página.' }}</small>
-        <span v-if="labelsError && showLabels" class="labels-warning" role="status">{{ labelsError }}</span>
-        <span v-if="hdError" class="labels-warning" role="status">{{ hdError }}</span>
-        <a v-if="styleChoice === 'satellite-hd'" class="maptiler-logo" href="https://www.maptiler.com/" target="_blank" rel="noopener"><img src="/maptiler-logo.svg" width="100" height="28" alt="MapTiler" /></a>
+        <section v-show="controlsTab === 'map'" class="map-controls-content" aria-label="Vista y navegación del mapa">
+          <div class="controls-section basemap-section">
+            <h3><MapIcon aria-hidden="true" /> Fondo del mapa</h3>
+            <div class="map-tool-group" role="group" aria-label="Tipo de mapa">
+              <button type="button" :class="{active:styleChoice === 'satellite'}" :aria-pressed="styleChoice === 'satellite'" @click="changeStyle('satellite')"><Satellite aria-hidden="true" /><span>Satélite</span></button>
+              <button v-if="hasTilesKey" type="button" :disabled="hdLoading" :class="{active:styleChoice === 'satellite-hd'}" :aria-pressed="styleChoice === 'satellite-hd'" @click="changeStyle('satellite-hd')"><Sparkles aria-hidden="true" /><span>{{ hdLoading ? 'Conectando HD…' : 'Satélite HD' }}</span></button>
+              <button type="button" :class="{active:styleChoice === 'streets'}" :aria-pressed="styleChoice === 'streets'" @click="changeStyle('streets')"><MapIcon aria-hidden="true" /><span>Calles</span></button>
+            </div>
+            <div class="navigation-actions">
+              <button type="button" class="map-tool-button location-toggle" :disabled="locating || (!mapLoaded && !compatibilityMode)" @click="locateMe"><LocateFixed aria-hidden="true" /><span>{{ locating ? 'Ubicando…' : 'Mi ubicación' }}</span></button>
+              <button type="button" class="map-tool-button" @click="fullscreen"><Maximize2 aria-hidden="true" /><span>Pantalla completa</span></button>
+            </div>
+          </div>
+          <div class="controls-section visibility-section">
+            <h3><Eye aria-hidden="true" /> Qué mostrar</h3>
+            <div class="visibility-options">
+              <button type="button" class="map-tool-button influence-toggle" :class="{active:showInfluence}" :aria-pressed="showInfluence" @click="showInfluence = !showInfluence"><MapPinned aria-hidden="true" /><span>Cobertura de estaciones</span><span class="control-switch" aria-hidden="true" /></button>
+              <button v-if="styleChoice !== 'streets'" type="button" class="map-tool-button labels-toggle" :class="{active:showLabels}" :aria-pressed="showLabels" @click="showLabels = !showLabels"><MapIcon aria-hidden="true" /><span>Nombres y caminos</span><span class="control-switch" aria-hidden="true" /></button>
+              <button v-if="!compatibilityMode && styleChoice !== 'streets' && showLabels" class="map-tool-button detail-toggle" type="button" :class="{active:detailedLabels}" :aria-pressed="detailedLabels" @click="detailedLabels = !detailedLabels"><Compass aria-hidden="true" /><span>Más referencias</span><span class="control-switch" aria-hidden="true" /></button>
+              <button type="button" class="map-tool-button scroll-toggle" :class="{active:scrollZoomEnabled}" :aria-pressed="scrollZoomEnabled" @click="scrollZoomEnabled = !scrollZoomEnabled"><MousePointer2 aria-hidden="true" /><span>Zoom con la rueda</span><span class="control-switch" aria-hidden="true" /></button>
+            </div>
+            <small>{{ scrollZoomEnabled ? 'Use la rueda para acercar y alejar; arrastre para moverse.' : 'Arrastre para moverse. La rueda desplaza la página.' }}</small>
+          </div>
+          <span v-if="labelsError && showLabels" class="labels-warning" role="status">{{ labelsError }}</span>
+          <span v-if="hdError" class="labels-warning" role="status">{{ hdError }}</span>
+          <a v-if="styleChoice === 'satellite-hd'" class="maptiler-logo" href="https://www.maptiler.com/" target="_blank" rel="noopener"><img src="/maptiler-logo.svg" width="100" height="28" alt="MapTiler" /></a>
+        </section>
+        <section v-show="controlsTab === 'copernicus'" class="imagery-tools" aria-label="Capas multiespectrales Copernicus">
+        <label v-if="imageryScenes !== undefined" class="map-scene-selector">
+          <span><Satellite aria-hidden="true" /> Fecha de la imagen</span>
+          <select class="select" aria-label="Imagen satelital del mapa" :value="selectedImageryId === recentScenes[0]?.id ? '' : selectedImageryId || ''" :disabled="!recentScenes.length || selectionDisabled" @change="emit('select-imagery', ($event.target as HTMLSelectElement).value)">
+            <option value="">{{ recentScenes.length ? `Más reciente · ${sceneLabel(recentScenes[0]!)}` : imageryHistoryLoading ? 'Consultando fechas…' : 'Sin imágenes disponibles' }}</option>
+            <optgroup v-for="month in imageryMonths" :key="month.label" :label="month.label">
+              <option v-for="scene in month.scenes" :key="scene.id" :value="scene.id">{{ sceneLabel(scene) }}</option>
+            </optgroup>
+          </select>
+          <small>Últimas 3 imágenes disponibles, por fecha de captura. Si coinciden en día, se muestra la hora de su dispositivo. La imagen elegida se usará al pulsar Analizar.</small>
+        </label>
+          <template v-if="availableImagery.length">
+            <div class="imagery-controls">
+              <div class="layer-selection-heading"><h3><Layers aria-hidden="true" /> Qué quiere observar</h3><small v-if="imagery">Imagen del {{ sceneLabel(imagery) }}</small></div>
+              <div class="imagery-options" role="group" aria-label="Índice satelital">
+                <button type="button" :class="{active:!imageryIndex}" :aria-pressed="!imageryIndex" data-layer="none" @click="imageryIndex=''"><EyeOff aria-hidden="true" /><span><b>Sin capa</b><small>Solo el mapa de fondo</small></span><Check v-if="!imageryIndex" class="layer-check" aria-hidden="true" /></button>
+                <button v-for="key in availableImagery" :key="key" type="button" :data-layer="key" :class="{active:imageryIndex===key}" :aria-pressed="imageryIndex===key" @click="imageryIndex=key"><component :is="imageryIcon(key)" aria-hidden="true" /><span><b>{{ imageryLabels[key] || key.toUpperCase() }}</b><small>{{ key === 'rgb' ? 'Vista natural' : imageryNames[key] || key.toUpperCase() }}</small></span><Check v-if="imageryIndex===key" class="layer-check" aria-hidden="true" /></button>
+              </div>
+              <label class="imagery-opacity"><span>Visibilidad de la capa</span><input v-model.number="imageryOpacity" :disabled="!imageryIndex" type="range" min="0" max="1" step="0.05" aria-label="Opacidad de la capa Copernicus"><output>{{Math.round(imageryOpacity*100)}}%</output></label>
+              <small class="opacity-help">Reduzca la visibilidad para ver el mapa debajo de la capa.</small>
+            </div>
+            <SpectralLegend v-if="activeLegend" :legend="activeLegend" :index-name="imageryIndex" :grid="imagery?.visual_grid" />
+            <p v-else-if="imageryIndex && imageryIndex !== 'rgb'" class="legacy-scale-note">Esta imagen conserva su escala anterior. Actualice las fuentes para usar los rangos del cliente.</p>
+          </template>
+          <div v-else class="layers-empty" role="status"><Satellite aria-hidden="true" /><div><strong>{{ imageryHistoryLoading ? 'Preparando las capas de su parcela' : 'Las capas aparecerán aquí' }}</strong><p>{{ imageryHistoryLoading ? 'Puede seguir explorando el mapa mientras se completan las imágenes.' : 'Delimite su parcela y consulte las imágenes de Copernicus para elegir qué observar.' }}</p></div></div>
+        </section>
       </div>
     </details>
+    <div v-if="parcels?.length" class="saved-parcel-legend" aria-label="Parcelas en el mapa">
+      <b>Mis parcelas</b><button v-for="(parcel,index) in parcels" :key="parcel.id" type="button" :disabled="selectionDisabled" :aria-pressed="parcel.id===selectedParcelId" :data-parcel-choice="parcel.id" @click="emit('select-parcel',parcel.id)"><i :style="{backgroundColor:parcelDisplayColor(parcel,index)}"/>{{parcel.name}}</button>
+      <button v-if="parcels.length>1" type="button" @click="fitAllParcels">Ver todas las parcelas</button>
+    </div>
+    </div>
     <div class="world-map-shell" :class="{ 'compatibility-mode': compatibilityMode }">
     <template v-if="compatibilityMode">
       <div class="compatibility-notice" role="status">
@@ -888,17 +983,7 @@ onBeforeUnmount(() => {
     </div>
     </template>
   </div>
-    <div v-if="parcels?.length" class="saved-parcel-legend" aria-label="Parcelas en el mapa">
-      <b>Mis parcelas</b><button v-for="(parcel,index) in parcels" :key="parcel.id" type="button" :disabled="selectionDisabled" :aria-pressed="parcel.id===selectedParcelId" :data-parcel-choice="parcel.id" @click="emit('select-parcel',parcel.id)"><i :style="{backgroundColor:parcelDisplayColor(parcel,index)}"/>{{parcel.name}}</button>
-      <button v-if="parcels.length>1" type="button" @click="fitAllParcels">Ver todas las parcelas</button>
-    </div>
     <ConfirmationModal :open="clearConfirmation" title="¿Borrar el polígono?" :message="clearMessage || 'Se borrará el polígono y se limpiarán los widgets de esta consulta.'" @cancel="clearConfirmation = false" @confirm="clearPolygon" />
-    <details v-if="availableImagery.length" class="imagery-tools" aria-label="Capas multiespectrales Copernicus">
-      <summary><span><b>Capas Copernicus</b><small>{{ sceneDate(imagery!.captured_at) }} · {{ imageryNames[imageryIndex] || 'Sin capa' }}</small></span><span class="layers-action">Capas y opacidad</span></summary>
-      <div class="imagery-controls"><div class="imagery-options" role="group" aria-label="Índice satelital"><button :class="{active:!imageryIndex}" :aria-pressed="!imageryIndex" @click="imageryIndex=''">Sin capa</button><button v-for="key in availableImagery" :key="key" :class="{active:imageryIndex===key}" :aria-pressed="imageryIndex===key" @click="imageryIndex=key">{{imageryNames[key] || key.toUpperCase()}}</button></div><label class="imagery-opacity">Opacidad de la capa <input v-model.number="imageryOpacity" type="range" min="0" max="1" step="0.05" aria-label="Opacidad de la capa Copernicus"><output>{{Math.round(imageryOpacity*100)}}%</output></label></div>
-      <SpectralLegend v-if="activeLegend" :legend="activeLegend" :index-name="imageryIndex" :grid="imagery?.visual_grid" />
-      <p v-else-if="imageryIndex && imageryIndex !== 'rgb'" class="legacy-scale-note">Esta imagen conserva su escala anterior. Actualice las fuentes para usar los rangos del cliente.</p>
-    </details>
   </div>
 </template>
 
@@ -919,13 +1004,15 @@ onBeforeUnmount(() => {
 
 </style>
 
+
+
 <style scoped>
 .imagery-opacity{display:flex;flex-basis:100%;align-items:center;justify-content:space-between;gap:12px;font-size:.75rem;font-weight:700;color:#31566f}.imagery-opacity input{flex:1;accent-color:#176536;max-width:220px}@media(max-width:700px){.map-provider-note{max-width:160px}}.world-map-shell{background:linear-gradient(130deg,#c9e3ed,#e7f0e3)}
 </style>
 
 <style scoped>
-.world-map-component{display:grid;gap:10px;min-width:0}.map-tools{right:64px;max-width:none}.map-tools .map-tool-group{flex-wrap:wrap;max-width:100%}.world-map-component:fullscreen{height:100dvh;grid-template-rows:minmax(0,1fr) auto;padding:12px;background:var(--fc-surface-muted)}.world-map-component:fullscreen .world-map-shell{height:100%!important;min-height:0}.imagery-tools{position:static;display:block;max-width:none;max-height:none;overflow:visible;padding:0;border:1px solid #d1e2ee;border-radius:14px;background:#fff;box-shadow:0 3px 12px #0044810b;backdrop-filter:none}.imagery-tools summary{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:56px;padding:12px 15px;cursor:pointer;list-style:none}.imagery-tools summary::-webkit-details-marker{display:none}.imagery-tools summary>span:first-child{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.imagery-tools summary b{font-size:.8rem;color:var(--fc-primary)}.imagery-tools summary small{font-size:.74rem;color:var(--fc-text-muted)}.layers-action{font-size:.75rem;font-weight:700;color:var(--fc-primary);white-space:nowrap}.layers-action::after{content:' +';padding-left:5px}.imagery-tools[open] .layers-action::after{content:' −'}.imagery-controls{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:0 15px 15px}.imagery-options{display:flex;flex-wrap:wrap;gap:6px}.imagery-tools button{min-height:36px;padding:7px 10px;border:1px solid #c8d7e2;border-radius:8px;background:#fff;color:var(--fc-text);font-size:.75rem;font-weight:700}.imagery-tools button.active{background:var(--fc-primary);border-color:var(--fc-primary);color:#fff}.imagery-opacity{flex-basis:auto;flex:1;max-width:380px;min-width:min(100%,260px);gap:10px;white-space:nowrap}.imagery-opacity input{min-width:70px;max-width:none;accent-color:var(--fc-primary)}.imagery-opacity output{min-width:36px;text-align:right;color:var(--fc-primary)}.compatible-basemaps{position:static;margin-bottom:12px;width:fit-content;box-shadow:none;border:1px solid #d1e2ee}.map-coverage-chip{top:auto;right:16px;bottom:20px;font-size:.72rem;font-weight:600;box-shadow:none;background:#ffffffdd}.map-provider-note{bottom:66px;font-size:.7rem;max-width:250px}
-@media(max-width:700px){.imagery-tools{max-width:none;max-height:none}.imagery-tools summary{gap:8px;padding:11px}.imagery-tools summary>span:first-child{gap:4px;display:grid}.imagery-controls{padding:0 11px 12px;gap:14px}.imagery-opacity{max-width:none;width:100%}.map-provider-note{bottom:56px;right:10px;max-width:170px}.map-coverage-chip{top:auto;bottom:15px;right:10px}.compatible-basemaps{margin-bottom:10px}}
+.world-map-component{display:grid;gap:10px;min-width:0}.map-tools{right:64px;max-width:none}.map-tools .map-tool-group{flex-wrap:wrap;max-width:100%}.world-map-component:fullscreen{height:100dvh;grid-template-rows:minmax(0,1fr) auto;padding:12px;background:var(--fc-surface-muted)}.world-map-component:fullscreen .world-map-shell{height:100%!important;min-height:0}.imagery-tools{position:static;display:block;max-width:none;max-height:none;overflow:visible;padding:0;border:1px solid #d1e2ee;border-radius:14px;background:#fff;box-shadow:0 3px 12px #0044810b;backdrop-filter:none}.imagery-controls{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:0 15px 15px}.imagery-options{display:flex;flex-wrap:wrap;gap:6px}.imagery-tools button{min-height:36px;padding:7px 10px;border:1px solid #c8d7e2;border-radius:8px;background:#fff;color:var(--fc-text);font-size:.75rem;font-weight:700}.imagery-tools button.active{background:var(--fc-primary);border-color:var(--fc-primary);color:#fff}.imagery-opacity{flex-basis:auto;flex:1;max-width:380px;min-width:min(100%,260px);gap:10px;white-space:nowrap}.imagery-opacity input{min-width:70px;max-width:none;accent-color:var(--fc-primary)}.imagery-opacity output{min-width:36px;text-align:right;color:var(--fc-primary)}.compatible-basemaps{position:static;margin-bottom:12px;width:fit-content;box-shadow:none;border:1px solid #d1e2ee}.map-coverage-chip{top:auto;right:16px;bottom:20px;font-size:.72rem;font-weight:600;box-shadow:none;background:#ffffffdd}.map-provider-note{bottom:66px;font-size:.7rem;max-width:250px}
+@media(max-width:700px){.imagery-tools{max-width:none;max-height:none}.imagery-controls{padding:0 11px 12px;gap:14px}.imagery-opacity{max-width:none;width:100%}.map-provider-note{bottom:56px;right:10px;max-width:170px}.map-coverage-chip{top:auto;bottom:15px;right:10px}.compatible-basemaps{margin-bottom:10px}}
 </style>
 
 <style scoped>
@@ -939,6 +1026,88 @@ onBeforeUnmount(() => {
 <style scoped>:deep(.weather-station-marker){display:block;width:40px;height:50px}:deep(.weather-station-marker span){position:absolute;left:45px;top:9px}:deep(.weather-station-marker img){display:block}</style>
 
 <style scoped>
+.map-scene-selector{display:grid;gap:7px;flex:1 1 100%;min-width:0;padding:13px;border:1px solid #d1e2ee;border-radius:12px;background:#f4f9fc}.map-scene-selector>span{font-size:.8rem;font-weight:750;color:var(--fc-primary)}.map-scene-selector select{width:100%;max-width:420px;min-width:0;min-height:44px}.map-scene-selector small{line-height:1.5}@media(max-width:700px){.map-scene-selector{grid-column:1/-1}}
 .map-controls-menu{min-width:0;border:1px solid #cddfe9;border-radius:15px;background:#fff;overflow:hidden}.map-controls-menu>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:12px 16px;list-style:none;cursor:pointer;color:var(--fc-primary);font-size:.83rem;font-weight:750}.map-controls-menu>summary::-webkit-details-marker{display:none}.controls-menu-title{display:flex;align-items:center;gap:9px}.map-controls-menu>summary>span:last-child{color:var(--fc-text-muted);font-size:.75rem}.map-controls-content{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:0 15px 15px}.map-controls-content .map-tool-button,.map-controls-content .map-tool-group{box-shadow:none;border:1px solid #d1e2ee}.map-controls-content button{cursor:pointer;min-height:44px}.map-controls-content small{width:100%;color:var(--fc-text-muted);font-size:.75rem}.map-controls-content .labels-warning{flex-basis:100%}.map-tools{max-width:calc(100% - 80px);right:auto}.world-map-component:fullscreen{display:flex;flex-direction:column}.world-map-component:fullscreen .map-controls-menu{flex-shrink:0;max-height:40dvh;overflow:auto}.world-map-component:fullscreen .world-map-shell{flex:1}.world-map-component:fullscreen .imagery-tools{max-height:35dvh;overflow:auto}
 @media(max-width:700px){.world-map-shell:not(.compatibility-mode){height:clamp(420px,62dvh,580px);min-height:420px}.map-controls-content{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:0 11px 12px;gap:8px}.map-controls-content .map-tool-group{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:stretch}.map-controls-content .map-tool-group button{flex:1}.map-controls-content .map-tool-button{width:100%;min-width:0;white-space:normal;text-align:center;line-height:1.35}.map-controls-content .detail-toggle,.map-controls-content small,.map-controls-content .labels-warning{grid-column:1/-1}.map-controls-menu>summary{padding:11px 12px}.map-controls-menu summary>span:last-child{white-space:nowrap}.map-tools{top:10px;left:10px;gap:6px}.map-tools .map-tool-button{min-height:44px}.map-legend{max-height:125px;max-width:165px;font-size:.69rem;padding:8px}.map-legend small{display:none}.map-provider-note{max-width:145px;font-size:.65rem}.world-map-component{width:100%;max-width:100%}}
+</style>
+
+<style scoped>
+.unified-map-controls{border:1px solid #cedee7;border-radius:19px;background:#fff;box-shadow:0 5px 22px #173f5310;overflow:hidden}
+.map-sidebar-controls{display:grid;gap:10px;min-width:0}
+.world-map-component:fullscreen .map-sidebar-controls{flex-shrink:0;max-height:45dvh;overflow:auto}
+.world-map-component:fullscreen .map-sidebar-controls .map-controls-menu{max-height:none;overflow:visible}
+.unified-map-controls>summary{gap:14px;padding:16px 18px;background:linear-gradient(110deg,#f3f8fb,#f4faf6);min-height:76px}
+.controls-title-icon{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border-radius:12px;background:#e1edf5;color:#165c83}
+.controls-title-icon svg{width:21px;height:21px}.controls-menu-title>span:last-child{display:grid;gap:4px}.controls-menu-title strong{font-size:.93rem;color:#174b68}.controls-menu-title small{font-size:.73rem;font-weight:450;color:#68808d}
+.controls-current{display:flex;align-items:center;gap:13px;min-width:0;text-align:right;font-weight:600;line-height:1.5}.controls-chevron{flex:0 0 18px;width:18px;height:18px;transition:transform .18s}.unified-map-controls[open] .controls-chevron{transform:rotate(180deg)}
+.controls-body{padding:14px 16px 16px}.controls-tabs{display:flex;gap:5px;width:fit-content;max-width:100%;padding:4px;margin-bottom:16px;border:1px solid #dce7ed;border-radius:13px;background:#f1f6f9}
+.controls-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 17px;border:1px solid transparent;border-radius:10px;background:transparent;color:#587584;font-size:.82rem;font-weight:700;cursor:pointer}
+.controls-tabs button.active{border-color:#d4e2e9;background:#fff;color:#145876;box-shadow:0 2px 5px #15334a0c}.controls-tabs svg{width:18px;height:18px;flex-shrink:0}.controls-tabs button:last-child.active{color:#176c58}.layer-count{display:grid;place-items:center;min-width:23px;height:22px;padding:0 5px;border-radius:7px;background:#e4f1e9;color:#23745b;font-size:.68rem}
+.unified-map-controls .map-controls-content{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);align-items:start;gap:18px;padding:0}
+.controls-section{display:grid;gap:12px;min-width:0;padding:15px;border:1px solid #e0e9ee;border-radius:14px;background:#fbfdfe}.controls-section h3,.layer-selection-heading h3{display:flex;align-items:center;gap:7px;margin:0;color:#476778;font-size:.76rem;font-weight:750}.controls-section h3 svg,.layer-selection-heading h3 svg{width:16px;height:16px}
+.unified-map-controls .map-tool-group{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:5px;width:100%;padding:4px;border:1px solid #dce7ed;border-radius:11px;background:#edf3f7;box-shadow:none}
+.unified-map-controls .map-tool-group button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:46px;padding:8px 10px;border:1px solid transparent;background:transparent;box-shadow:none;font-size:.78rem;line-height:1.4;cursor:pointer}.unified-map-controls .map-tool-group button.active{border-color:#1c6083;background:#165d82;color:#fff;box-shadow:0 2px 4px #174f7320}.unified-map-controls .map-tool-group svg{width:17px;height:17px;flex-shrink:0}
+.navigation-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.unified-map-controls .map-tool-button{display:flex;align-items:center;gap:9px;min-height:46px;padding:10px 11px;border:1px solid #d8e5ed;border-radius:10px;background:#fff;color:#335e75;font-size:.75rem;font-weight:650;box-shadow:none;text-align:left;line-height:1.4;white-space:normal;cursor:pointer}.unified-map-controls .map-tool-button svg{width:17px;height:17px;flex:0 0 17px}.unified-map-controls .map-tool-button:disabled{opacity:.5;cursor:wait}
+.visibility-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.unified-map-controls .visibility-options .map-tool-button.active{border-color:#bed6df;background:#f0f7fa;color:#215f7b}.control-switch{position:relative;flex:0 0 26px;width:26px;height:16px;margin-left:auto;border-radius:20px;background:#d7e1e7}.control-switch:after{content:'';position:absolute;top:3px;left:3px;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #15334a26;transition:transform .15s}.visibility-options [aria-pressed=true] .control-switch{background:#277a91}.visibility-options [aria-pressed=true] .control-switch:after{transform:translateX(10px)}
+.unified-map-controls .map-controls-content small{font-size:.7rem;line-height:1.5;color:#6e8490}.unified-map-controls .labels-warning{grid-column:1/-1}
+.unified-map-controls .imagery-tools{margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;max-height:none;overflow:visible}
+.unified-map-controls .map-scene-selector{gap:7px;margin-bottom:15px;padding:12px 14px;border:1px solid #dbe8e0;background:#f5faf6}.map-scene-selector>span{display:flex;align-items:center;gap:7px}.map-scene-selector>span svg{width:17px;height:17px}.unified-map-controls .map-scene-selector small{font-size:.72rem;color:#6b8074}.unified-map-controls .map-scene-selector select{max-width:100%;background-color:#fff}
+.unified-map-controls .imagery-controls{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;align-items:stretch;width:100%;gap:12px;padding:0}.layer-selection-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.layer-selection-heading h3{color:#396c58}.layer-selection-heading>small{font-size:.71rem;color:#70867a}
+.unified-map-controls .imagery-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px}
+.unified-map-controls .imagery-options button{display:flex;align-items:center;gap:9px;position:relative;min-height:65px;padding:11px 12px;border:1px solid #dce8e1;border-radius:12px;background:#fff;color:#537367;text-align:left;cursor:pointer;transition:background .15s,border-color .15s}.unified-map-controls .imagery-options button>svg{width:20px;height:20px;flex:0 0 20px}.imagery-options button>span{display:grid;gap:4px;min-width:0}.imagery-options b{font-size:.76rem;line-height:1.35;font-weight:700}.imagery-options small{font-size:.65rem;line-height:1.4;font-weight:500;opacity:.8}.unified-map-controls .imagery-options button.active{border-color:#398663;background:#edf8ef;color:#236747;box-shadow:inset 0 0 0 1px #39866335}.unified-map-controls .imagery-options .layer-check{width:15px;height:15px;flex-basis:15px;margin-left:auto;color:#2c7b50}
+.unified-map-controls .imagery-opacity{display:grid;grid-template-columns:auto minmax(80px,1fr) 40px;align-items:center;gap:14px;min-width:0;width:100%;max-width:none;margin-top:2px;padding:12px 14px;border:1px solid #e1ebe5;border-radius:11px;background:#f7faf8;color:#3b6853;white-space:normal;font-size:.75rem}.unified-map-controls .imagery-opacity input{width:100%;height:28px;max-width:none;accent-color:#347d59;cursor:pointer}.unified-map-controls .imagery-opacity input:disabled{opacity:.4;cursor:default}.unified-map-controls .imagery-opacity output{color:#2a7050;font-variant-numeric:tabular-nums}.opacity-help{margin-top:-4px;font-size:.69rem;color:#758b7d}
+.unified-map-controls :deep(.spectral-legend){margin-top:14px;border:1px solid #e2ebe5;border-radius:12px;background:#f7fbf8}.legacy-scale-note{margin:12px 0 0;font-size:.75rem;line-height:1.5;color:#6b7e72}.layers-empty{display:flex;align-items:center;gap:13px;padding:18px;border:1px dashed #c9ddd0;border-radius:13px;background:#f8fbf9;color:#5a7869}.layers-empty>svg{flex:0 0 25px;width:25px;height:25px}.layers-empty strong{font-size:.8rem}.layers-empty p{margin:5px 0 0;font-size:.74rem;line-height:1.6}
+.unified-map-controls button:focus-visible,.unified-map-controls>summary:focus-visible,.unified-map-controls select:focus-visible,.unified-map-controls input:focus-visible{outline:3px solid #438db7;outline-offset:3px}.unified-map-controls button:hover:not(:disabled):not(.active){border-color:#a8c7d3;background:#f6fafc}
+@media(max-width:900px){.unified-map-controls .map-controls-content{grid-template-columns:minmax(0,1fr)}.unified-map-controls .imagery-options{grid-template-columns:repeat(3,minmax(0,1fr))}.visibility-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.unified-map-controls>summary{min-height:72px;padding:12px;gap:9px}.controls-title-icon{flex-basis:34px;width:34px;height:34px;border-radius:10px}.controls-menu-title{gap:8px}.controls-menu-title strong{font-size:.82rem}.controls-menu-title small{font-size:.66rem;line-height:1.5}.controls-current>span{display:none}.controls-current{gap:0}.controls-body{padding:11px}.controls-tabs{width:100%;margin-bottom:12px;box-sizing:border-box}.controls-tabs button{flex:1;padding:9px 7px;gap:6px;font-size:.75rem}.controls-tabs svg{width:16px;height:16px}.layer-count{min-width:20px;height:20px}.controls-section{padding:12px;gap:10px}.unified-map-controls .map-controls-content{padding:0;gap:11px}.unified-map-controls .map-tool-group{display:grid;grid-column:auto}.unified-map-controls .map-tool-group button{padding:7px 5px;font-size:.72rem;gap:5px}.unified-map-controls .map-tool-group button>svg{width:15px;height:15px;flex-basis:15px}.unified-map-controls .map-tool-button{font-size:.72rem;padding:9px 8px;gap:7px}.visibility-section small{grid-column:auto}.unified-map-controls .imagery-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.unified-map-controls .imagery-options button{min-height:68px;padding:10px 8px;gap:7px}.imagery-options b{font-size:.72rem}.unified-map-controls .imagery-options .layer-check{flex-basis:13px;width:13px;height:13px}.unified-map-controls .imagery-opacity{grid-template-columns:1fr 40px;gap:5px 8px;padding:11px}.imagery-opacity>span{grid-column:1/-1}.unified-map-controls .map-scene-selector select{font-size:16px}.unified-map-controls .layers-empty{padding:14px}}
+@media(prefers-reduced-motion:reduce){.controls-chevron,.control-switch:after,.unified-map-controls .imagery-options button{transition:none}}
+</style>
+
+<style scoped>
+@media(min-width:1024px){
+  .world-map-component{--map-workspace-height:clamp(600px,76vh,820px);display:grid;grid-template-columns:minmax(0,1fr) 36px minmax(0,3fr);gap:8px;align-items:start}
+  .map-sidebar-controls{grid-column:1;grid-row:1;min-width:0;max-height:var(--map-workspace-height);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#c7dbe2 transparent;gap:8px}
+  .world-map-shell{grid-column:3;grid-row:1;min-width:0;width:100%;height:var(--map-workspace-height);min-height:600px}
+  .world-map-component.menu-hidden{grid-template-columns:36px minmax(0,1fr)}
+  .world-map-component.menu-hidden>.world-map-shell{grid-column:2}
+  .map-sidebar-controls .unified-map-controls{border-radius:14px}
+  .map-sidebar-controls .unified-map-controls>summary{min-height:58px;padding:10px;gap:7px}
+  .map-sidebar-controls .controls-title-icon{flex-basis:30px;width:30px;height:30px;border-radius:9px}
+  .map-sidebar-controls .controls-title-icon svg{width:17px;height:17px}
+  .map-sidebar-controls .controls-menu-title{gap:7px}.map-sidebar-controls .controls-menu-title strong{font-size:.78rem}.map-sidebar-controls .controls-menu-title small{font-size:.63rem;line-height:1.4}
+  .map-sidebar-controls .controls-current>span{display:none}
+  .map-sidebar-controls .controls-body{padding:10px}
+  .map-sidebar-controls .controls-tabs{width:100%;box-sizing:border-box;gap:3px;padding:3px;margin-bottom:10px}
+  .map-sidebar-controls .controls-tabs button{flex:1;min-width:0;min-height:36px;padding:6px 5px;gap:5px;font-size:.68rem;line-height:1.4}.map-sidebar-controls .controls-tabs svg{width:15px;height:15px}.map-sidebar-controls .layer-count{min-width:18px;height:18px;padding:0 3px;font-size:.6rem}
+  .map-sidebar-controls .unified-map-controls .map-controls-content{grid-template-columns:minmax(0,1fr);gap:10px}
+  .map-sidebar-controls .controls-section{padding:10px;gap:9px}.map-sidebar-controls .controls-section h3,.map-sidebar-controls .layer-selection-heading h3{font-size:.7rem}
+  .map-sidebar-controls .unified-map-controls .map-tool-group{padding:3px;gap:3px}.map-sidebar-controls .unified-map-controls .map-tool-group button{min-height:34px;padding:6px 4px;gap:4px;font-size:.67rem}.map-sidebar-controls .unified-map-controls .map-tool-group svg{width:14px;height:14px;flex-basis:14px}
+  .map-sidebar-controls .navigation-actions{gap:6px}.map-sidebar-controls .unified-map-controls .map-tool-button{min-height:34px;padding:6px 8px;gap:7px;font-size:.68rem}.map-sidebar-controls .unified-map-controls .map-tool-button svg{width:15px;height:15px;flex-basis:15px}
+  .map-sidebar-controls .visibility-options{grid-template-columns:minmax(0,1fr);gap:6px}.map-sidebar-controls .unified-map-controls .map-controls-content small{font-size:.64rem}
+  .map-sidebar-controls .unified-map-controls .map-scene-selector{padding:10px;margin-bottom:11px;gap:6px}.map-sidebar-controls .map-scene-selector>span{font-size:.72rem}.map-sidebar-controls .unified-map-controls .map-scene-selector select{min-height:36px;padding:7px 9px;font-size:.73rem}.map-sidebar-controls .unified-map-controls .map-scene-selector small{font-size:.64rem}
+  .map-sidebar-controls .unified-map-controls .imagery-controls{gap:9px}.map-sidebar-controls .layer-selection-heading>small{font-size:.63rem}
+  .map-sidebar-controls .unified-map-controls .imagery-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.map-sidebar-controls .unified-map-controls .imagery-options button{min-height:50px;padding:7px;gap:6px}.map-sidebar-controls .imagery-options b{font-size:.66rem}.map-sidebar-controls .imagery-options small{font-size:.59rem}.map-sidebar-controls .unified-map-controls .imagery-options button>svg{width:16px;height:16px;flex-basis:16px}.map-sidebar-controls .unified-map-controls .imagery-options .layer-check{width:12px;height:12px;flex-basis:12px}
+  .map-sidebar-controls .unified-map-controls .imagery-opacity{grid-template-columns:minmax(0,1fr) 34px;padding:9px;gap:3px 8px;font-size:.68rem}.map-sidebar-controls .imagery-opacity>span{grid-column:1/-1}.map-sidebar-controls .opacity-help{font-size:.62rem;line-height:1.5}
+  .map-sidebar-controls :deep(.spectral-legend){padding:10px;margin-top:10px}.map-sidebar-controls :deep(.legend-heading){font-size:.68rem}.map-sidebar-controls :deep(.legend-heading span),.map-sidebar-controls :deep(.spectral-legend p),.map-sidebar-controls :deep(.spectral-legend small){font-size:.64rem;line-height:1.5}.map-sidebar-controls :deep(.spectral-legend li){font-size:.62rem}
+  .map-sidebar-controls .saved-parcel-legend{padding:9px;gap:6px;font-size:.68rem}.map-sidebar-controls .saved-parcel-legend button{min-height:32px;padding:6px 8px;font-size:.68rem}
+}
+@media(max-width:1023px){
+  .world-map-component{display:flex;flex-direction:column;gap:12px}
+  .world-map-shell{order:0}.map-sidebar-controls{order:1;max-height:none;overflow:visible}
+}
+</style>
+
+<style scoped>
+.map-layout-toolbar{grid-column:1/-1;grid-row:1;order:-1;display:flex;justify-content:flex-end;min-width:0}
+.map-menu-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:7px 11px;border:1px solid #c9dce7;border-radius:10px;background:#fff;color:#215d7a;font-size:.75rem;font-weight:700;line-height:1.4;cursor:pointer;box-shadow:0 2px 7px #163b5308}
+.map-menu-toggle svg{width:17px;height:17px;flex-shrink:0}.map-menu-toggle:hover{border-color:#7caec4;background:#f0f7fb}.map-menu-toggle:focus-visible{outline:3px solid #438db7;outline-offset:3px}
+.menu-hidden .map-menu-toggle{border-color:#99bfce;background:#edf6fa}
+@media(max-width:1023px){.map-menu-toggle{min-height:44px}}
+@media(min-width:1024px){
+  .map-layout-toolbar{grid-column:2;grid-row:1;align-self:stretch;align-items:flex-start;justify-content:center;padding-top:12px}
+  .menu-hidden>.map-layout-toolbar{grid-column:1}
+  .map-menu-toggle{width:36px;min-height:48px;padding:8px;border-radius:11px;background:#f1f7fa;border-color:#bfd5e0;box-shadow:0 2px 8px #163b530c}
+  .map-menu-toggle svg{width:20px;height:20px}
+  .map-menu-toggle>span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+}
 </style>

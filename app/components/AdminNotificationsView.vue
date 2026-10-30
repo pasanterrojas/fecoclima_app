@@ -1,410 +1,74 @@
 <script setup lang="ts">
-import {
-  BellRing,
-  Bot,
-  CheckCircle2,
-  Clock3,
-  ExternalLink,
-  FileText,
-  Mail,
-  MessageCircle,
-  Plus,
-  RefreshCw,
-  RotateCcw,
-  Save,
-  Send,
-  Trash2,
-} from 'lucide-vue-next'
-
+import { ArrowLeft, BellRing, BookUser, CheckCircle2, Edit3, History, Plus, Power, RefreshCw, Search, Settings2, Trash2 } from 'lucide-vue-next'
 const props = defineProps<{ detailId?: string }>()
-const settingsTab = ref(false)
-const selectedContextIndex = ref(-1)
-const confirmDelete = ref(false)
-const contextKey = (item: any) => `${item.station_id}__${item.crop_code}__${item.planting_date}`
-const editableContexts = computed(() => form.contexts.map((item: any,index: number)=>({item,index})).filter((entry: any)=>entry.index === selectedContextIndex.value))
-
 const { request } = useApi()
-const loading = ref(true)
-const saving = ref(false)
-const actionLoading = ref('')
-const error = ref('')
-const message = ref('')
-const stations = ref<any[]>([])
-const crops = ref<any[]>([])
-const logs = ref<any[]>([])
-const telegramSubscribers = ref<any[]>([])
-const recipientsText = ref('')
-const telegramBotToken = ref('')
-const hasTelegramToken = ref(false)
-const telegramTokenMasked = ref('')
-const telegramBotUsername = ref('')
-const telegramBotName = ref('')
-const telegramSubscribeUrl = ref('')
-const telegramLastSyncAt = ref<string | null>(null)
-const lastRunAt = ref<string | null>(null)
-const lastResult = ref<string | null>(null)
-
-const form = reactive<any>({
-  active: false,
-  timezone: 'America/Asuncion',
-  send_hour: 6,
-  email_enabled: false,
-  telegram_enabled: false,
-  telegram_minimum_level: 'MODERADA',
-  contexts: [],
-})
-
-function apiError(exception: any): string {
-  const detail = exception?.data?.detail
-  const errors = exception?.data?.errors
-  if (Array.isArray(errors) && errors.length) {
-    return errors.map((item: any) => String(item?.msg || 'Dato inválido').replace(/^Value error,\s*/i, '')).join(' · ')
-  }
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((item: any) => item.msg).join(' · ')
-  return detail?.message || exception?.message || 'No fue posible completar la operación.'
+const route = useRoute()
+const base = '/fecoclima-ia/admin/notificaciones'
+const tabs = [{ id:'alertas',label:'Alertas',icon:BellRing },{ id:'libreta',label:'Libreta de direcciones',icon:BookUser },{ id:'configuracion',label:'Configuración',icon:Settings2 }]
+const tab = computed(() => props.detailId ? 'alertas' : String(route.query.tab || 'alertas'))
+const stations=ref<any[]>([])
+const rows = ref<any[]>([]), loading = ref(false), busy = ref(false), error = ref(''), notice = ref(''), search = ref(''), status = ref('all')
+const control = reactive<any>({active:false,email_enabled:false,telegram_enabled:false,telegram_bot_token:'',notifier_prompt:''})
+const form = reactive<any>({name:'',prompt:'',station_id:'',active:false,every_minutes:120,lookback_hours:72,run_full_analysis:true})
+const interpretation = ref<any>(null)
+const runs = ref<any[]>([]), cycle = ref<any>(null), cycleBusy=ref(false)
+let cycleTimer: ReturnType<typeof setTimeout> | undefined
+const current = ref<any>(null), deliveries = ref<any[]>([]), historyName = ref(''), historyEventId=ref(''), preview = ref<any>(null)
+const editing = computed(() => !!props.detailId)
+const filtered = computed(() => rows.value.filter(r => (status.value === 'all' || r.active === (status.value === 'active')) && [r.code,r.name,r.prompt].join(' ').toLowerCase().includes(search.value.toLowerCase())))
+const labels: Record<string,string> = {TRUE:'Condición cumplida',FALSE:'Condición no cumplida',UNKNOWN:'Datos insuficientes',RUNNING:'En ejecución',COMPLETED:'Completada',CYCLE_ERROR:'Error de ejecución',PARTIAL:'Parcial',CONTENT_ERROR:'Error del notificador',SENT:'Enviado',ERROR:'Error',QUEUED:'En cola',CANCELLED:'Cancelado'}
+const modeLabels: Record<string,string> = {AUTOMATIC:'Automático',MANUAL:'Manual',SIMULATION:'Simulación'}
+const message = (e:any) => typeof e?.data?.detail === 'string' ? e.data.detail : Array.isArray(e?.data?.detail) ? e.data.detail.map((d:any)=>d.msg).join(' · ') : 'Revise los datos e intente de nuevo.'
+const date = (value?:string) => value ? new Date(value).toLocaleString('es-CR') : '—'
+async function load(){ loading.value=true;error.value='';try{const [events,settings,options]:any[]=await Promise.all([request('/notifications/events'),request('/notifications/control'),request('/notifications/subscriptions/options')]);rows.value=events.items||[];stations.value=options.stations||[];Object.assign(control,settings,{telegram_bot_token:''});if(props.detailId && props.detailId!=='nuevo'){current.value=rows.value.find(r=>r.id===props.detailId);if(!current.value)throw {data:{detail:'Alerta no encontrada.'}};Object.assign(form,{name:current.value.name,prompt:current.value.prompt,active:current.value.active,station_id:current.value.station_id||'',every_minutes:current.value.every_minutes||120,lookback_hours:current.value.lookback_hours||72,run_full_analysis:current.value.run_full_analysis!==false});interpretation.value=current.value.compiled_rule;if(route.query.run&&!cycle.value){cycleBusy.value=true;void pollCycle(String(route.query.run))}}}catch(e:any){error.value=message(e)}finally{loading.value=false}}
+async function save(){busy.value=true;error.value='';notice.value='';try{const body={...form,station_id:form.station_id||null,crop_id:current.value?.crop_id||null,cadence:'INTERVAL',channel:'BOTH'};const saved:any=await request(current.value?`/notifications/events/${current.value.id}`:'/notifications/events',{method:current.value?'PUT':'POST',body});current.value=saved;interpretation.value=saved.compiled_rule;notice.value=saved.active?`Alerta guardada. Se ejecutará cada ${form.every_minutes/60} horas y analizará las últimas ${form.lookback_hours} horas.`:'Alerta guardada y desactivada. Actívela para iniciar las comprobaciones automáticas.';if(props.detailId==='nuevo')await navigateTo(`${base}/${saved.id}`);else await load()}catch(e:any){error.value=message(e)}finally{busy.value=false}}
+async function remove(row:any){
+ if(!window.confirm(`¿Eliminar la alerta «${row.name}» (${row.code})?\n\nSe eliminarán su configuración, el historial de ejecuciones y entregas y los avisos pendientes. Dejará de ejecutarse. Los correos o mensajes ya enviados no se pueden retirar. Las parcelas y los contactos de la libreta se conservan.\n\nEsta acción no se puede deshacer.`))return
+ busy.value=true;error.value='';notice.value=''
+ try{await request(`/notifications/events/${row.id}`,{method:'DELETE'});historyName.value='';await load()}catch(e:any){error.value=message(e)}finally{busy.value=false}
 }
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('es-PY')
+async function toggle(row:any){busy.value=true;error.value='';notice.value='';try{await request(`/notifications/events/${row.id}`,{method:'PUT',body:{name:row.name,prompt:row.prompt,active:!row.active,station_id:row.station_id,crop_id:row.crop_id,cadence:'INTERVAL',every_minutes:row.every_minutes||120,lookback_hours:row.lookback_hours||72,run_full_analysis:row.run_full_analysis!==false,channel:'BOTH'}});notice.value=row.active?'Alerta desactivada.':'Alerta activada.';await load()}catch(e:any){error.value=message(e)}finally{busy.value=false}}
+async function interpret(){busy.value=true;error.value='';try{const r:any=await request('/notifications/events/parse',{method:'POST',body:{name:form.name||'Nueva alerta',prompt:form.prompt,station_id:form.station_id||null}});interpretation.value=r.compiled_rule}catch(e:any){error.value=message(e)}finally{busy.value=false}}
+watch(()=>form.prompt,()=>{if(form.prompt!==current.value?.prompt)interpretation.value=null})
+async function pollCycle(id:string){
+ try{const r:any=await request(`/notifications/events/${current.value.id}/runs/${id}`);cycle.value=r;if(['QUEUED','RUNNING'].includes(r.status)){cycleTimer=setTimeout(()=>pollCycle(id),2000)}else{cycleBusy.value=false;preview.value=r.result;await load()}}
+ catch(e:any){cycleBusy.value=false;error.value=message(e)}
 }
-
-function normalizeHour(value: any): number {
-  const parsed = Number(String(value).replace(',', '.'))
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 23) throw new Error('La hora de envío debe estar entre 0 y 23.')
-  return parsed
-}
-
-function normalizeTelegramToken(value: string): string | null {
-  const token = value.trim()
-  if (!token) return null
-  if (!/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(token)) {
-    throw new Error('Pegue el token completo de BotFather: ID numérico, dos puntos y clave secreta.')
-  }
-  return token
-}
-
-function recipients(): string[] {
-  const values = recipientsText.value
-    .split(/[\n,;]+/)
-    .map((value: string) => value.trim().toLowerCase())
-    .filter((value: string) => Boolean(value))
-  return Array.from(new Set<string>(values))
-}
-
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const [result, logResult]: any[] = await Promise.all([
-      request('/notifications/settings'),
-      request('/notifications/logs', { query: { limit: 40 } }),
-    ])
-    stations.value = result.stations || []
-    crops.value = result.crops || []
-    const settings = result.settings || {}
-    Object.assign(form, {
-      active: Boolean(settings.active),
-      timezone: settings.timezone || 'America/Asuncion',
-      send_hour: Number(settings.send_hour ?? 6),
-      email_enabled: Boolean(settings.email_enabled),
-      telegram_enabled: Boolean(settings.telegram_enabled),
-      telegram_minimum_level: settings.telegram_minimum_level || 'MODERADA',
-      contexts: Array.isArray(settings.contexts) ? settings.contexts.map((item: any) => ({ ...item })) : [],
-    })
-    if (props.detailId === 'nuevo') { addContext(); selectedContextIndex.value = form.contexts.length - 1 }
-    else if (props.detailId) {
-      selectedContextIndex.value = form.contexts.findIndex((item: any) => contextKey(item) === props.detailId)
-      if (selectedContextIndex.value < 0) error.value = 'Este aviso ya no está disponible. Regrese al listado.'
-    }
-    recipientsText.value = (settings.recipients || []).join('\n')
-    hasTelegramToken.value = Boolean(settings.has_telegram_token)
-    telegramTokenMasked.value = settings.telegram_token_masked || ''
-    telegramBotUsername.value = settings.telegram_bot_username || ''
-    telegramBotName.value = settings.telegram_bot_name || ''
-    telegramSubscribeUrl.value = settings.telegram_subscribe_url || ''
-    telegramLastSyncAt.value = settings.telegram_last_sync_at || null
-    lastRunAt.value = settings.last_run_at || null
-    lastResult.value = settings.last_result || null
-    logs.value = logResult.items || []
-    telegramSubscribers.value = result.telegram_subscribers || []
-  } catch (exception: any) {
-    error.value = apiError(exception)
-  } finally {
-    loading.value = false
-  }
-}
-
-function addContext() {
-  form.contexts.push({
-    station_id: stations.value[0]?.id || '',
-    crop_code: crops.value[0]?.code || '',
-    planting_date: '',
-    label: '',
-  })
-}
-
-async function removeContext() {
-  confirmDelete.value = false
-  const index = selectedContextIndex.value
-  const removed = form.contexts.splice(index, 1)[0]
-  if (!removed) return
-  const wasActive = form.active
-  if (!form.contexts.length) form.active = false
-  const success = await save({ removed: true })
-  if (!success) { form.contexts.splice(index, 0, removed); form.active = wasActive }
-}
-
-function cropName(code: string): string {
-  return crops.value.find(item => item.code === code)?.name || code
-}
-
-function stationName(id: string): string {
-  return stations.value.find(item => item.id === id)?.name || id
-}
-
-async function save(options?: { removed?: boolean } | Event) {
-  saving.value = true
-  error.value = ''
-  message.value = ''
-  try {
-    if (form.contexts.some((item: any) => !item.planting_date)) throw new Error('Indique la fecha real de siembra para cada aviso configurado.')
-    const keys = form.contexts.map(contextKey)
-    if (new Set(keys).size !== keys.length) throw new Error('Ya existe un aviso para esa estación, cultivo y fecha de siembra. Edite el aviso existente.')
-    const body: any = {
-      active: Boolean(form.active),
-      timezone: String(form.timezone || '').trim(),
-      send_hour: normalizeHour(form.send_hour),
-      email_enabled: Boolean(form.email_enabled),
-      recipients: [],
-      telegram_enabled: Boolean(form.telegram_enabled),
-      telegram_bot_token: normalizeTelegramToken(telegramBotToken.value),
-      telegram_minimum_level: form.telegram_minimum_level === 'GRAVE' ? 'GRAVE' : 'MODERADA',
-      contexts: form.contexts.map((item: any) => ({
-        station_id: item.station_id,
-        crop_code: item.crop_code,
-        planting_date: item.planting_date,
-        label: String(item.label || '').trim() || null,
-      })),
-    }
-    await request('/notifications/settings', { method: 'PUT', body })
-    if (options && 'removed' in options && options.removed) { await navigateTo('/fecoclima-ia/admin/notificaciones'); return true }
-    telegramBotToken.value = ''
-    message.value = 'Configuración guardada. Telegram trabaja por sincronización automática; no necesita webhook ni Chat ID.'
-    if (props.detailId && selectedContextIndex.value >= 0) {
-      const nextId = contextKey(form.contexts[selectedContextIndex.value])
-      if (props.detailId !== nextId) { await navigateTo(`/fecoclima-ia/admin/notificaciones/${nextId}`); return true }
-    }
-    await load()
-    return true
-  } catch (exception: any) {
-    error.value = apiError(exception)
-    return false
-  } finally {
-    saving.value = false
-  }
-}
-
-async function runAction(name: string, path: string, success: string) {
-  actionLoading.value = name
-  error.value = ''
-  message.value = ''
-  try {
-    const result: any = await request(path, { method: 'POST' })
-    message.value = result?.queued === false ? 'Ya existe un boletín pendiente o en ejecución.' : success
-    await load()
-  } catch (exception: any) {
-    error.value = apiError(exception)
-  } finally {
-    actionLoading.value = ''
-  }
-}
-
-async function verifyTelegram() {
-  actionLoading.value = 'verify'
-  error.value = ''
-  message.value = ''
-  try {
-    const result: any = await request('/notifications/telegram/verify', { method: 'POST' })
-    telegramSubscribeUrl.value = result.subscribe_url || ''
-    message.value = `Bot verificado: @${result?.bot?.username || 'sin usuario'}. El modo de recepción es sincronización automática.`
-    await load()
-  } catch (exception: any) {
-    error.value = apiError(exception)
-  } finally {
-    actionLoading.value = ''
-  }
-}
-
-async function syncSubscribers() {
-  actionLoading.value = 'sync'
-  error.value = ''
-  message.value = ''
-  try {
-    const result: any = await request('/notifications/telegram/sync', { method: 'POST' })
-    telegramSubscribers.value = result.items || []
-    const active = telegramSubscribers.value.filter(item => item.active).length
-    message.value = result.processed
-      ? `Se procesaron ${result.processed} actualización(es). Hay ${active} suscriptor(es) activo(s).`
-      : `No había comandos pendientes. Hay ${active} suscriptor(es) activo(s).`
-    await load()
-  } catch (exception: any) {
-    error.value = apiError(exception)
-  } finally {
-    actionLoading.value = ''
-  }
-}
-
-async function deactivateSubscriber(item: any) {
-  actionLoading.value = `remove-${item.id}`
-  error.value = ''
-  try {
-    await request(`/notifications/telegram/subscribers/${item.id}`, { method: 'DELETE' })
-    message.value = `Suscripción desactivada: ${item.title || item.chat_id}`
-    await load()
-  } catch (exception: any) {
-    error.value = apiError(exception)
-  } finally {
-    actionLoading.value = ''
-  }
-}
-
-async function resetTelegram() {
-  if (!confirm('Esto eliminará el token y todos los suscriptores de Telegram. ¿Continuar?')) return
-  actionLoading.value = 'reset'
-  error.value = ''
-  message.value = ''
-  try {
-    const result: any = await request('/notifications/telegram/reset', { method: 'POST' })
-    telegramBotToken.value = ''
-    message.value = result.message || 'Telegram reiniciado.'
-    await load()
-  } catch (exception: any) {
-    error.value = apiError(exception)
-  } finally {
-    actionLoading.value = ''
-  }
-}
-
+async function startCycle(simulate=true){if(!current.value){error.value='Guarde la alerta antes de ejecutarla.';return}if(!simulate&&!window.confirm('Esta ejecución puede enviar avisos a los suscriptores autorizados si detecta episodios nuevos. ¿Continuar?'))return;busy.value=true;error.value='';preview.value=null;cycle.value=null;try{const r:any=await request(`/notifications/events/${current.value.id}/${simulate?'simulate':'run'}`,{method:'POST'});notice.value=r.message;cycleBusy.value=true;await pollCycle(r.run_id)}catch(e:any){error.value=message(e)}finally{busy.value=false}}
+onBeforeUnmount(()=>{if(cycleTimer)clearTimeout(cycleTimer)})
+async function history(row:any){busy.value=true;error.value='';try{const [r,h]:any[]=await Promise.all([request(`/notifications/events/${row.id}/deliveries`),request(`/notifications/events/${row.id}/runs`)]);deliveries.value=r.items||[];runs.value=h.items||[];historyName.value=row.name;historyEventId.value=row.id}catch(e:any){error.value=message(e)}finally{busy.value=false}}
+async function saveControl(){busy.value=true;error.value='';notice.value='';try{const r:any=await request('/notifications/control',{method:'PUT',body:{active:control.active,email_enabled:control.email_enabled,telegram_enabled:control.telegram_enabled,telegram_bot_token:control.telegram_bot_token||null,notifier_prompt:control.notifier_prompt}});Object.assign(control,r,{telegram_bot_token:''});notice.value='Configuración guardada y prompt del agente notificador publicado.'}catch(e:any){error.value=message(e)}finally{busy.value=false}}
 onMounted(load)
 </script>
-
-<template>
-  <section>
-    <NuxtLink v-if="props.detailId" to="/fecoclima-ia/admin/notificaciones" class="back-link">← Volver a avisos</NuxtLink>
-    <AdminPageHeader
-      :title="props.detailId ? (form.contexts[selectedContextIndex]?.label || 'Configurar aviso') : 'Aviso a productores'"
-      description="Configure un análisis automático de las últimas 72 horas y distribúyalo por correo o Telegram cuando exista una alerta moderada o grave."
-    >
-      <button class="btn btn-light" :disabled="loading" @click="load"><RefreshCw /> Actualizar</button>
-    </AdminPageHeader>
-
-    <details v-if="!props.detailId" class="form-help"><summary>Agentes y documentación del aviso</summary><div class="role-grid">
-      <NuxtLink class="role-card" to="/fecoclima-ia/admin/agentes"><Bot /><div><b>Agente del boletín</b><span>Configure el propósito “Boletín automático de 72 horas” por cultivo.</span></div></NuxtLink>
-      <NuxtLink class="role-card" to="/fecoclima-ia/admin/conocimiento"><FileText /><div><b>Fuentes documentales</b><span>Los PDF indexados por cultivo también respaldan el boletín.</span></div></NuxtLink>
-    </div></details>
-
-    <div v-if="message" class="notice success-message"><CheckCircle2 /> {{ message }}</div>
-    <ErrorState v-if="error" :message="error" @retry="load" />
-    <LoadingState v-if="loading" />
-
-    <nav v-if="!props.detailId" class="detail-tabs"><button :class="{active:!settingsTab}" @click="settingsTab=false">Avisos</button><button :class="{active:settingsTab}" @click="settingsTab=true">Canales y horario</button></nav>
-    <article v-if="!loading && !props.detailId && !settingsTab" class="card card-body"><div class="row-between"><h2 class="section-title">Avisos configurados</h2><NuxtLink class="btn btn-primary" to="/fecoclima-ia/admin/notificaciones/nuevo">Agregar aviso</NuxtLink></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Estación</th><th>Cultivo</th><th>Siembra</th><th>Acciones</th></tr></thead><tbody><tr v-for="item in form.contexts" :key="contextKey(item)"><td><NuxtLink class="record-link" :to="`/fecoclima-ia/admin/notificaciones/${contextKey(item)}`">{{ item.label || `${cropName(item.crop_code)} · ${stationName(item.station_id)}` }}</NuxtLink></td><td>{{ stationName(item.station_id) }}</td><td>{{ cropName(item.crop_code) }}</td><td>{{ item.planting_date }}</td><td><NuxtLink class="btn btn-light" :to="`/fecoclima-ia/admin/notificaciones/${contextKey(item)}`">Ver detalle</NuxtLink></td></tr><tr v-if="!form.contexts.length"><td colspan="5">Todavía no hay avisos configurados.</td></tr></tbody></table></div></article>
-    <form v-if="!loading && (settingsTab || selectedContextIndex >= 0)" class="stack" @submit.prevent="save">
-      <article v-if="!props.detailId" class="card">
-        <div class="card-body">
-          <div class="row-between section-head">
-            <div><h2>Programación diaria</h2><p>El scheduler revisa la hora configurada y envía una sola vez al día cuando el riesgo alcanza el umbral.</p></div>
-            <label class="switch-row"><input v-model="form.active" type="checkbox"><span>Servicio automático activo</span></label>
-          </div>
-          <div class="form-grid">
-            <label><span class="label">Zona horaria</span><select v-model="form.timezone" class="select"><option value="America/Asuncion">Paraguay · Asunción</option><option value="America/Costa_Rica">Costa Rica</option><option value="UTC">UTC</option></select><small>Use una zona IANA válida.</small></label>
-            <label><span class="label">Hora local de envío</span><select v-model="form.send_hour" class="select"><option v-for="hour in 24" :key="hour" :value="hour-1">{{ String(hour-1).padStart(2,'0') }}:00</option></select><small>0–23. Ejemplo: 6 corresponde a las 06:00.</small></label>
-          </div>
-          <div class="status-strip"><span><Clock3 /> Última ejecución: <b>{{ formatDate(lastRunAt) }}</b></span><span>Resultado: <b>{{ lastResult || 'Sin ejecutar' }}</b></span></div>
-        </div>
-      </article>
-
-      <article v-if="props.detailId" class="card">
-        <div class="card-body">
-          <div class="row-between section-head"><div><h2>Datos del aviso</h2><p>Cada contexto usa estación, fecha de siembra, reglas, pronóstico, Copernicus y documentos del cultivo.</p></div></div>
-          <div class="contexts">
-            <div v-for="{item,index} in editableContexts" :key="index" class="context-row">
-              <label><span class="label">Nombre para el productor</span><input v-model="item.label" class="input" :placeholder="`${cropName(item.crop_code)} · ${stationName(item.station_id)}`"></label>
-              <label><span class="label">Estación</span><select v-model="item.station_id" class="select" required><option value="">Seleccione</option><option v-for="station in stations" :key="station.id" :value="station.id">{{ station.name }}</option></select></label>
-              <label><span class="label">Cultivo</span><select v-model="item.crop_code" class="select" required><option value="">Seleccione</option><option v-for="crop in crops" :key="crop.id" :value="crop.code">{{ crop.name }}</option></select></label>
-              <label><span class="label">Fecha de siembra</span><input v-model="item.planting_date" class="input" type="date" required></label>
-              <button v-if="props.detailId !== 'nuevo'" type="button" class="icon-btn danger" title="Eliminar aviso" :disabled="saving" @click="confirmDelete=true"><Trash2 /></button>
-            </div>
-            <div v-if="!form.contexts.length" class="empty-inline">Agregue al menos un contexto para activar el envío automático.</div>
-          </div>
-        </div>
-      </article>
-
-      <div v-if="!props.detailId" class="channel-grid">
-        <article class="card channel-card">
-          <div class="card-body">
-            <div class="channel-title"><Mail /><div><h2>Correo electrónico</h2><p>Se envía una versión HTML y otra en texto simple.</p></div><label class="switch-row"><input v-model="form.email_enabled" type="checkbox"><span>Activo</span></label></div>
-            <div class="notice"><b>Destinatarios de la libreta de direcciones</b><p class="small muted">Solo se enviarán boletines a correos confirmados y activos que coincidan con el cultivo y la estación configurados en cada aviso.</p><NuxtLink to="/fecoclima-ia/admin/libretadedirecciones" class="btn btn-light">Ver suscripciones</NuxtLink></div>
-            <button type="button" class="btn btn-light" :disabled="actionLoading !== ''" @click="runAction('email', '/notifications/test-email', 'Prueba de correo procesada.')"><Send /> {{ actionLoading === 'email' ? 'Enviando…' : 'Probar correo' }}</button>
-          </div>
-        </article>
-
-        <article class="card channel-card telegram-card">
-          <div class="card-body">
-            <div class="channel-title"><MessageCircle /><div><h2>Telegram</h2><p>El bot recibe /start. Para alertas por cultivo debe vincularse después de confirmar correo.</p></div><label class="switch-row"><input v-model="form.telegram_enabled" type="checkbox"><span>Activo</span></label></div>
-
-            <label><span class="label">Token del bot</span><input v-model="telegramBotToken" class="input" type="password" autocomplete="new-password" :placeholder="hasTelegramToken ? `Configurado: ${telegramTokenMasked}` : '123456789:AA...' "><small>Créelo en @BotFather, copie el token completo y guarde. Si cambia el token, se eliminan las suscripciones del bot anterior.</small></label>
-
-            <div v-if="hasTelegramToken" class="bot-status">
-              <div><b>{{ telegramBotName || 'Bot FECOCLIMA' }}</b><span>{{ telegramBotUsername ? `@${telegramBotUsername}` : 'Token guardado' }}</span><small>Modo: sincronización automática cada minuto · Última: {{ formatDate(telegramLastSyncAt) }}</small></div>
-              <a v-if="telegramSubscribeUrl" class="btn btn-light" :href="telegramSubscribeUrl" target="_blank" rel="noopener"><ExternalLink /> Abrir bot</a>
-            </div>
-
-            <label><span class="label">Umbral mínimo</span><select v-model="form.telegram_minimum_level" class="select"><option value="MODERADA">Moderada o grave</option><option value="GRAVE">Solo grave</option></select><small>No se envía cuando todos los contextos están en NINGUNA o DATOS_INSUFICIENTES.</small></label>
-
-            <div class="telegram-actions">
-              <button type="button" class="btn btn-light" :disabled="actionLoading !== '' || !hasTelegramToken" @click="verifyTelegram"><Bot /> {{ actionLoading === 'verify' ? 'Verificando…' : 'Verificar bot' }}</button>
-              <button type="button" class="btn btn-light" :disabled="actionLoading !== '' || !hasTelegramToken" @click="syncSubscribers"><RefreshCw /> {{ actionLoading === 'sync' ? 'Sincronizando…' : 'Sincronizar suscriptores' }}</button>
-              <button type="button" class="btn btn-light" :disabled="actionLoading !== '' || !hasTelegramToken" @click="runAction('telegram', '/notifications/test-telegram', 'Bot verificado. No se enviaron mensajes a productores.')"><Send /> {{ actionLoading === 'telegram' ? 'Enviando…' : 'Verificar Telegram sin enviar' }}</button>
-            </div>
-
-            <div class="subscriber-summary"><b>{{ telegramSubscribers.filter(item => item.active).length }}</b><span>chats activos del bot</span></div><p class="small muted">Los boletines y eventos solo se enviarán a direcciones confirmadas y vinculadas a Telegram desde Suscripciones.</p>
-            <div v-if="telegramSubscribers.length" class="subscriber-list">
-              <article v-for="item in telegramSubscribers" :key="item.id" :class="{ inactive: !item.active }"><div><b>{{ item.title || item.chat_id }}</b><span>{{ item.chat_type || 'chat' }} · {{ item.chat_id }}</span><small>{{ item.active ? `Activo desde ${formatDate(item.subscribed_at)}` : `Inactivo desde ${formatDate(item.unsubscribed_at)}` }}</small><small v-if="item.last_error" class="error-text">{{ item.last_error }}</small></div><button v-if="item.active" type="button" class="icon-btn danger" title="Desactivar suscripción" :disabled="actionLoading !== ''" @click="deactivateSubscriber(item)"><Trash2 /></button></article>
-            </div>
-
-            <button type="button" class="reset-link" :disabled="actionLoading !== ''" @click="resetTelegram"><RotateCcw /> {{ actionLoading === 'reset' ? 'Reiniciando…' : 'Reiniciar Telegram desde cero' }}</button>
-          </div>
-        </article>
-      </div>
-
-      <details v-if="!props.detailId" class="card telegram-guide"><summary class="card-body">Ayuda para conectar Telegram</summary>
-        <div class="card-body">
-          <div class="guide-title"><Bot /><div><h2>Conexión desde cero</h2><p>El flujo completo tiene cinco pasos y funciona tanto en localhost como en producción.</p></div></div>
-          <ol>
-            <li>En Telegram, abra <b>@BotFather</b>, ejecute <code>/newbot</code> y copie el token.</li>
-            <li>Pegue el token aquí y pulse <b>Guardar configuración</b>. El backend valida el bot y elimina cualquier webhook anterior.</li>
-            <li>Pulse <b>Abrir bot</b>. En Telegram, pulse <b>Iniciar</b> o envíe <code>/start</code>.</li>
-            <li>Regrese y pulse <b>Sincronizar suscriptores</b>. El scheduler también lo hará automáticamente cada minuto.</li>
-            <li>Pulse <b>Probar Telegram</b>. Después active Telegram y el servicio automático.</li>
-          </ol>
-          <p class="guide-note">Cada persona puede cancelar con <code>/stop</code> y consultar su estado con <code>/status</code>.</p>
-        </div>
-      </details>
-
-      <div class="bottom-actions"><button class="btn btn-primary" :disabled="saving"><Save /> {{ saving ? 'Guardando…' : 'Guardar configuración' }}</button><button v-if="!props.detailId" type="button" class="btn ai-send" :disabled="actionLoading !== '' || saving" @click="runAction('digest', '/notifications/run-now', 'Boletín agregado a la cola del worker.')"><BellRing /> {{ actionLoading === 'digest' ? 'Preparando…' : 'Generar y enviar ahora' }}</button></div>
-    </form>
-
-    <article v-if="!loading" class="card logs-card">
-      <div class="card-body"><div class="row-between section-head"><div><h2>Historial de envíos</h2><p>Resultados del boletín automático y de las pruebas reales.</p></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Operación</th><th>Estado</th><th>Duración</th><th>Resultado</th></tr></thead><tbody><tr v-for="row in logs" :key="row.id"><td>{{ formatDate(row.created_at || row.started_at) }}</td><td>{{ row.operation }}</td><td><span class="badge" :class="row.status === 'COMPLETED' ? 'badge-success' : row.status === 'FAILED' ? 'badge-danger' : 'badge-warning'">{{ row.status }}</span></td><td>{{ row.duration_ms != null ? `${row.duration_ms} ms` : '—' }}</td><td><span v-if="row.error_message" class="error-text">{{ row.error_message }}</span><span v-else>{{ row.records_created || 0 }} contextos</span></td></tr><tr v-if="!logs.length"><td colspan="5">Aún no hay ejecuciones registradas.</td></tr></tbody></table></div></div>
-    </article>
-    <ConfirmationModal :open="confirmDelete" title="Eliminar aviso" message="Se quitará este aviso. Si es el último, el servicio automático quedará desactivado." @confirm="removeContext" @cancel="confirmDelete=false" />
-  </section>
+<template><section>
+<AdminPageHeader title="Avisos y alertas" description="Condiciones meteorológicas, suscriptores y canales de envío en un solo lugar."/>
+<nav class="tabs" aria-label="Opciones de avisos y alertas"><NuxtLink v-for="item in tabs" :key="item.id" :to="`${base}?tab=${item.id}`" :class="{selected:tab===item.id}" :aria-current="tab===item.id?'page':undefined"><component :is="item.icon" :size="18"/>{{item.label}}</NuxtLink></nav>
+<p v-if="error" class="notice notice-danger" role="alert">{{error}}</p><p v-if="notice" class="notice badge-success" role="status">{{notice}}</p>
+<template v-if="tab==='alertas'">
+<template v-if="editing"><NuxtLink :to="base" class="back-link"><ArrowLeft :size="17"/> Volver a alertas</NuxtLink>
+<form class="card editor" @submit.prevent="save"><header><span class="eyebrow">{{current?.code || 'Código generado al guardar'}}</span><h2>{{current?'Editar alerta':'Agregar nueva alerta'}}</h2></header><div class="editor-body"><label class="label" for="alert-name">Nombre de la alerta</label><input id="alert-name" v-model="form.name" class="input" required minlength="3" maxlength="180" placeholder="Riesgo de roya">
+<label class="label" for="alert-station">Estación meteorológica</label><select id="alert-station" v-model="form.station_id" class="select" required><option disabled value="">Seleccione la estación que origina la alerta</option><option v-for="station in stations" :key="station.id" :value="station.id">{{station.name}}</option></select><p class="small muted">Solo se notificará a contactos vinculados con parcelas que tengan cobertura dentro del área de esta estación. Se comprueba la geometría actual, incluida la cobertura parcial.</p>
+<label class="label" for="alert-prompt">Prompt de la condición</label><textarea id="alert-prompt" v-model="form.prompt" class="textarea input" rows="6" required minlength="15" maxlength="2000" placeholder="Describa las condiciones que deben cumplirse para enviar el aviso…"/>
+<p class="small muted">Describa libremente qué variable debe cambiar, el umbral y durante cuánto tiempo, si corresponde. Puede combinar condiciones con «y» u «o», pedir promedios, acumulados o cambios. La IA interpreta el texto y el monitor lo comprueba con mediciones reales de las estaciones activas.</p>
+<div class="interpretation"><button class="btn btn-light" type="button" :disabled="busy||!form.station_id||form.prompt.trim().length<15" @click="interpret">{{busy?'Interpretando…':'Interpretar condición'}}</button><p v-if="interpretation?.summary" class="notice small"><b>Condición interpretada</b><br>{{interpretation.summary}}</p></div>
+<div class="config-grid cycle-settings"><div><label class="label" for="alert-frequency">Ejecutar automáticamente cada</label><select id="alert-frequency" v-model.number="form.every_minutes" class="select"><option :value="60">1 hora</option><option :value="120">2 horas</option><option :value="180">3 horas</option><option :value="360">6 horas</option><option :value="720">12 horas</option><option :value="1440">24 horas</option><option v-if="![60,120,180,360,720,1440].includes(form.every_minutes)" :value="form.every_minutes">{{form.every_minutes}} minutos</option></select></div><div><label class="label" for="alert-lookback">Analizar hacia atrás</label><select id="alert-lookback" v-model.number="form.lookback_hours" class="select"><option :value="60">60 horas</option><option :value="72">72 horas · 3 días</option><option :value="96">96 horas · 4 días</option><option :value="120">120 horas · 5 días</option></select></div></div>
+<label class="switch"><input v-model="form.run_full_analysis" type="checkbox">Actualizar el análisis IA de las parcelas cubiertas por esta estación</label><p class="small muted">Incluye datos y pronóstico, agente agro, agente de datos, satélite y orquestador. Después se comprueba el prompt y el notificador prepara el aviso. Al desmarcarlo, solo se revisan las estaciones y se prepara el aviso cuando corresponde.</p>
+<label class="switch"><input v-model="form.active" type="checkbox">{{form.active?'Alerta activa':'Alerta desactivada'}}</label><p class="small muted">El contenido del mensaje lo define el agente notificador en Configuración. Se buscan episodios nuevos en el período configurado y se evita repetir los ya revisados al solaparse las ventanas. Funciona con el navegador cerrado.</p>
+<p v-if="!control.active" class="notice notice-warning">El envío general está desactivado. Habilítelo en Configuración cuando los canales estén preparados.</p></div><footer><button class="btn btn-light" type="button" :disabled="busy||cycleBusy||!current" @click="startCycle(true)"><CheckCircle2 :size="17"/>Simular ciclo sin enviar</button><button class="btn btn-light" type="button" :disabled="busy||cycleBusy||!current||!current.active" @click="startCycle(false)">Ejecutar ahora y notificar</button><button class="btn btn-primary" :disabled="busy||loading">{{busy?'Guardando…':'Guardar alerta'}}</button></footer></form>
+<article v-if="cycle" class="card card-body preview"><h3>{{cycle.mode==='SIMULATION'?'Simulación sin envío':'Ejecución'}} · {{labels[cycle.status]||cycle.status}}</h3><p v-if="cycleBusy">El servicio está trabajando en segundo plano. Puede cerrar la página y consultar después el historial.</p><p v-if="cycle.error" class="notice notice-danger">{{cycle.error}}</p><template v-if="preview"><p>Resultado: <b>{{labels[preview.status]||preview.status}}</b> · {{preview.period?.hours}} horas · {{preview.parcel_analyses?.length||0}} parcelas analizadas · {{preview.queued||0}} envíos en cola.</p><p v-if="preview.period" class="small muted">{{date(preview.period.from)}} → {{date(preview.period.to)}}</p><p v-for="station in preview.stations" :key="station.station_id"><b>{{station.station}}</b> · {{station.episodes?.length||0}} episodios nuevos<br>{{station.detail}}</p><p v-for="plot in preview.parcel_analyses" :key="plot.plot_id"><b>{{plot.plot}}</b> · {{labels[plot.status]||plot.status}}<span v-if="plot.error"> · {{plot.error}}</span></p><div v-if="preview.audience"><h4>Destinatarios previstos</h4><p v-for="recipient in preview.audience" :key="recipient.email+recipient.channel">{{recipient.email}} · {{recipient.channel}} · {{recipient.plots.map((p:any)=>p.plot).join(', ')}}</p><p v-if="!preview.audience.length" class="notice notice-warning">No hay contactos confirmados vinculados con parcelas cubiertas, con sus canales habilitados.</p></div><p v-if="preview.content_error" class="notice notice-warning">{{preview.content_error}}</p><div v-if="preview.preview_content?.markdown" class="notice"><h4>Vista previa del aviso</h4><p class="message-preview">{{preview.preview_content.markdown}}</p></div><p v-if="preview.simulation" class="notice badge-success">No se enviaron avisos ni se consumieron los episodios de la alerta.</p></template></article>
 </template>
-
+<template v-else><div class="toolbar"><div class="filters"><label class="search"><Search :size="17"/><input v-model="search" placeholder="Buscar alerta…" aria-label="Buscar alerta"></label><select v-model="status" class="select" aria-label="Estado de alertas"><option value="all">Todas las alertas</option><option value="active">Alertas activas</option><option value="inactive">Alertas desactivadas</option></select></div><NuxtLink :to="`${base}/nuevo`" class="btn btn-primary"><Plus :size="18"/>Agregar nueva alerta</NuxtLink></div>
+<p v-if="!control.active" class="notice notice-warning">El envío general está desactivado. Prepare los canales y el agente notificador en Configuración.</p>
+<article class="card"><div class="table-wrap"><table><thead><tr><th>Código y nombre</th><th>Condición</th><th>Estado</th><th>Última comprobación</th><th>Acciones</th></tr></thead><tbody><tr v-for="row in filtered" :key="row.id"><td><NuxtLink :to="`${base}/${row.id}`" class="record-link">{{row.name}}</NuxtLink><small class="code">{{row.code}}</small></td><td class="prompt-cell"><b>{{stations.find(s=>s.id===row.station_id)?.name||'Seleccione una estación'}}</b><br>{{row.prompt}}<small class="code">Cada {{row.every_minutes/60}} h · últimas {{row.lookback_hours||72}} h · {{row.run_full_analysis!==false?'Análisis IA completo':'Estaciones'}}</small></td><td><span class="badge" :class="row.active?'badge-success':'badge-warning'">{{row.active?'Activa':'Desactivada'}}</span></td><td>{{date(row.last_checked_at)}}<small class="code">{{labels[row.last_status]||row.last_status||'Aún sin comprobar'}}</small><small v-if="row.active" class="code">Próxima: {{row.next_run_at?date(row.next_run_at):'Al iniciar el servicio'}}</small></td><td><div class="actions"><NuxtLink :to="`${base}/${row.id}`" class="icon-btn" title="Editar alerta" aria-label="Editar alerta"><Edit3 :size="17"/></NuxtLink><button class="icon-btn" :disabled="busy" :title="row.active?'Desactivar alerta':'Activar alerta'" :aria-label="row.active?'Desactivar alerta':'Activar alerta'" @click="toggle(row)"><Power :size="17"/></button><button class="icon-btn" :disabled="busy" title="Historial de envíos" aria-label="Historial de envíos" @click="history(row)"><History :size="17"/></button><button class="icon-btn" :disabled="busy" title="Eliminar alerta" aria-label="Eliminar alerta" @click="remove(row)"><Trash2 :size="17"/></button></div></td></tr><tr v-if="!filtered.length"><td colspan="5">{{loading?'Cargando…':rows.length?'No hay alertas que coincidan con los filtros.':'Aún no hay alertas guardadas.'}}<button v-if="!loading&&rows.length" class="btn btn-light" @click="status='all';search=''">Mostrar todas las alertas</button></td></tr></tbody></table></div></article>
+<article v-if="historyName" class="card card-body preview"><div class="toolbar"><h3>Historial · {{historyName}}</h3><button class="btn btn-light" @click="historyName=''">Cerrar historial</button></div><h4>Ejecuciones del servicio</h4><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Modo</th><th>Estado</th><th>Período</th><th>Parcelas / resultado</th><th>Detalle</th></tr></thead><tbody><tr v-for="run in runs" :key="run.id"><td>{{date(run.started_at||run.created_at)}}</td><td>{{modeLabels[run.mode]||run.mode}}</td><td>{{labels[run.status]||run.status}}</td><td>{{run.result?.period?.hours||'—'}} h</td><td>{{run.result?.parcel_analyses?.length||0}} parcelas · {{run.error||labels[run.result?.status]||run.result?.status||'Pendiente'}}</td><td><NuxtLink :to="`${base}/${historyEventId}?run=${run.id}`" class="btn btn-light">Ver resultado</NuxtLink></td></tr><tr v-if="!runs.length"><td colspan="6">Aún no hay ejecuciones.</td></tr></tbody></table></div><h4>Entregas</h4><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Canal</th><th>Destino</th><th>Estado</th><th>Detalle</th></tr></thead><tbody><tr v-for="row in deliveries" :key="row.id"><td>{{date(row.delivered_at||row.created_at)}}</td><td>{{row.channel}}</td><td>{{row.destination_hint}}</td><td>{{labels[row.status]||row.status}} · {{row.attempts}} intentos</td><td>{{row.error||'—'}}</td></tr><tr v-if="!deliveries.length"><td colspan="5">Todavía no hay entregas.</td></tr></tbody></table></div></article>
+</template></template>
+<AdminNotificationAddressBook v-else-if="tab==='libreta'"/>
+<form v-else-if="tab==='configuracion'" class="card editor" @submit.prevent="saveControl"><header><h2>Configuración de avisos y alertas</h2><p>El servicio ejecuta cada alerta con la frecuencia y el período definidos en su configuración, incluso con el navegador cerrado. Solo envía a suscripciones confirmadas y a los canales autorizados.</p></header><div class="editor-body"><label class="switch"><input v-model="control.active" type="checkbox">Habilitar el servicio de avisos y alertas</label><div class="config-grid"><article><h3>Correo electrónico</h3><label class="switch"><input v-model="control.email_enabled" type="checkbox">Habilitar envíos por correo</label><p class="small">Remitente: {{control.smtp_from||'Sin configurar'}}</p><p class="notice" :class="control.smtp_ready?'badge-success':'notice-warning'">{{control.smtp_ready?'SMTP configurado.':'Configure SMTP_HOST y SMTP_FROM con un remitente real en el servidor.'}}</p></article><article><h3>Telegram</h3><label class="switch"><input v-model="control.telegram_enabled" type="checkbox">Habilitar envíos por Telegram</label><label class="label" for="bot-token">Token del bot de BotFather</label><input id="bot-token" v-model="control.telegram_bot_token" class="input" type="password" autocomplete="new-password" :placeholder="control.has_telegram_token?'Token guardado · dejar vacío para conservar':'Pegue el token del bot'"><p class="small">{{control.telegram_bot_username?'Bot: @'+control.telegram_bot_username:'Todavía no hay bot configurado.'}} Los suscriptores lo vinculan después de confirmar su correo.</p></article></div><h3>Agente notificador</h3><label class="label" for="notifier-prompt">Instrucciones de contenido y presentación</label><textarea id="notifier-prompt" v-model="control.notifier_prompt" class="input textarea" rows="10" required minlength="30" maxlength="12000"/><p class="small muted">Al guardar se publica una versión del agente. Su modelo y proveedor se administran en <NuxtLink :to="control.notifier_agent_id?`/fecoclima-ia/admin/agentes/${control.notifier_agent_id}`:'/fecoclima-ia/admin/agentes'">Agentes → Notificador</NuxtLink>.</p><h3>Inscripción pública</h3><a :href="control.public_url" target="_blank" rel="noopener">{{control.public_url}}</a><p class="small muted">La dirección pública debe ser accesible para los usuarios; se configura con FRONTEND_BASE_URL.</p></div><footer><button class="btn btn-primary" :disabled="busy||loading">{{busy?'Guardando…':'Guardar configuración'}}</button></footer></form>
+</section></template>
 <style scoped>
-.role-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px}.role-card{display:flex;align-items:center;gap:13px;padding:16px;border:1px solid #c5dfed;border-radius:14px;background:#eef8fd;color:var(--fc-primary)}.role-card>svg{width:28px;flex:0 0 28px}.role-card b,.role-card span{display:block}.role-card span{margin-top:3px;color:var(--fc-text-muted);font-size:.85rem}.success-message{display:flex;align-items:center;gap:8px;margin-bottom:16px;background:#ebf8ef;border-left-color:var(--fc-success)}.section-head h2,.channel-title h2,.guide-title h2{margin:0;color:var(--fc-primary)}.section-head p,.channel-title p,.guide-title p{margin:4px 0 0;color:var(--fc-text-muted)}label small{display:block;margin-top:5px;color:var(--fc-text-muted);font-size:.78rem}.switch-row{display:flex;align-items:center;gap:8px;font-weight:800}.switch-row input{width:19px;height:19px}.status-strip{display:flex;flex-wrap:wrap;gap:12px 28px;margin-top:16px;padding:12px 14px;border-radius:10px;background:var(--fc-surface-muted);color:var(--fc-text-muted)}.status-strip span{display:flex;align-items:center;gap:6px}.status-strip svg{width:16px}.contexts{display:flex;flex-direction:column;gap:12px}.context-row{display:grid;grid-template-columns:1.35fr 1fr .8fr .9fr auto;gap:10px;align-items:end;padding:14px;border:1px solid var(--fc-border);border-radius:12px;background:var(--fc-surface-muted)}.icon-btn{display:grid;place-items:center;width:42px;height:42px;border:0;border-radius:9px}.icon-btn.danger{background:#ffeded;color:var(--fc-danger)}.icon-btn svg{width:18px}.empty-inline{padding:22px;text-align:center;color:var(--fc-text-muted);border:1px dashed var(--fc-border);border-radius:12px}.channel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.channel-card .card-body{display:flex;flex-direction:column;gap:15px;height:100%}.channel-title{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start}.channel-title>svg{width:29px;color:var(--fc-primary)}.telegram-card{background:linear-gradient(145deg,#fff,#f0f9fd)}.telegram-actions{display:flex;flex-wrap:wrap;gap:8px}.bot-status{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border:1px solid #b9dceb;border-radius:11px;background:#fff}.bot-status b,.bot-status span,.bot-status small{display:block}.bot-status span{margin-top:3px;color:var(--fc-primary)}.bot-status small{margin-top:3px;color:var(--fc-text-muted);font-size:.74rem}.subscriber-summary{display:flex;align-items:baseline;gap:7px;padding:10px 12px;border-radius:9px;background:#edf8fd}.subscriber-summary b{font-size:1.35rem;color:var(--fc-primary)}.subscriber-summary span{color:var(--fc-text-muted)}.subscriber-list{display:flex;flex-direction:column;gap:7px}.subscriber-list article{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #bfddeb;border-radius:9px;background:#fff}.subscriber-list article.inactive{opacity:.55;background:#f4f5f6}.subscriber-list article b,.subscriber-list article span,.subscriber-list article small{display:block}.subscriber-list article span,.subscriber-list article small{margin-top:2px;color:var(--fc-text-muted);font-size:.76rem}.reset-link{display:flex;align-items:center;justify-content:center;gap:7px;padding:8px;border:0;background:transparent;color:var(--fc-danger);font-weight:700;cursor:pointer}.reset-link:disabled{opacity:.5;cursor:not-allowed}.reset-link svg{width:17px}.guide-title{display:flex;gap:12px;align-items:center}.guide-title>svg{width:30px;color:var(--fc-primary)}.telegram-guide ol{margin:18px 0 0;padding-left:24px}.telegram-guide li{margin:9px 0;line-height:1.5}.telegram-guide code{padding:2px 6px;background:#eaf3f8;border-radius:5px}.guide-note{margin:14px 0 0;color:var(--fc-text-muted)}.bottom-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.ai-send{color:#fff;background:linear-gradient(135deg,#5b45d8,#168dcc);box-shadow:0 10px 24px rgba(53,91,190,.22)}.logs-card{margin-top:18px}.error-text{color:var(--fc-danger);font-size:.82rem}@media(max-width:1100px){.context-row{grid-template-columns:1fr 1fr}.context-row .icon-btn{align-self:end}.channel-grid{grid-template-columns:1fr}}@media(max-width:720px){.role-grid{grid-template-columns:1fr}.context-row{grid-template-columns:1fr}.channel-title{grid-template-columns:auto 1fr}.channel-title .switch-row{grid-column:1/-1}.bot-status{align-items:flex-start;flex-direction:column}.bottom-actions .btn{width:100%}}
+.tabs{display:flex;gap:8px;border-bottom:1px solid var(--fc-border);margin-bottom:24px;flex-wrap:wrap}.tabs a{display:flex;align-items:center;gap:8px;padding:13px 16px;color:var(--fc-text-muted);border-bottom:3px solid transparent}.tabs a.selected{border-color:var(--fc-primary);color:var(--fc-primary);font-weight:750}.filters,.actions{display:flex;gap:9px;align-items:center}.filters{flex-wrap:wrap}.filters select{width:auto}.search{display:flex;gap:9px;align-items:center;border:1px solid var(--fc-border);border-radius:10px;padding:0 12px;background:white}.search input{border:0;min-height:42px;background:none;outline:0;min-width:0}.toolbar{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap;margin:0 0 20px}.icon-btn{width:37px;height:37px;display:grid;place-items:center;border:0;border-radius:9px;background:#e8f2f8;color:var(--fc-primary)}.record-link{color:var(--fc-primary);font-weight:750;text-decoration:underline;text-underline-offset:4px}.code{display:block;color:var(--fc-text-muted);font-size:.72rem;margin-top:6px}.prompt-cell{max-width:420px;min-width:210px;line-height:1.55}.back-link{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;color:var(--fc-primary);font-weight:700}.editor header,.editor-body,.editor footer{padding:24px}.editor header{border-bottom:1px solid var(--fc-border)}.editor h2{margin:0;color:var(--fc-primary);font-size:1.18rem}.editor header p{margin:10px 0 0;color:var(--fc-text-muted)}.editor-body{display:grid;gap:14px}.editor-body .label{margin:0}.editor-body p{margin:0}.editor footer{border-top:1px solid var(--fc-border);display:flex;gap:10px;justify-content:flex-end;background:#f6fafc;flex-wrap:wrap}.textarea{height:auto;resize:vertical;line-height:1.6}.switch{display:flex;gap:10px;align-items:center;font-weight:650}.switch input{width:18px;height:18px;accent-color:var(--fc-primary)}.config-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.config-grid article{display:grid;gap:14px;align-content:start;background:#f7fafc;border-radius:12px;padding:20px}.config-grid h3{margin:0}.eyebrow{display:block;font-size:.72rem;color:var(--fc-text-muted);margin-bottom:10px}.preview{margin-top:20px}.preview p{line-height:1.7}@media(max-width:700px){.config-grid{grid-template-columns:1fr}.editor header,.editor-body,.editor footer{padding:18px}.filters{width:100%}.search{flex:1}.tabs a{padding:10px;font-size:.83rem}.editor footer .btn{flex:1}}
 </style>
+
+<style scoped>:global(.admin-mobile-mode) .config-grid{grid-template-columns:1fr}</style>
+
+<style scoped>.cycle-settings .label{display:block;margin-bottom:8px}.cycle-settings>div{display:grid;gap:8px}.message-preview{white-space:pre-wrap}</style>

@@ -37,3 +37,32 @@ while(queue.length)await queue.shift()()
 assert.equal(preview.pollingPaused.value,true)
 assert.equal(calls,121)
 console.log('Imagery state, prolonged polling, network recovery and bounded pause verified.')
+
+let initialLoad, failRefresh=false, processing=true
+const savedQueue=[]
+const {useParcelSatelliteHistory}=await compile('../app/composables/useParcelSatelliteHistory.ts',{
+ ref:value=>({value}),watch:(source,callback)=>{initialLoad=callback(source.value)},onBeforeUnmount:()=>{},
+ setTimeout:fn=>{savedQueue.push(fn);return savedQueue.length},clearTimeout:()=>{},
+ usePublicParcelApi:()=>({request:async(path,options)=>{
+  if(options?.method==='POST'){
+   if(failRefresh)throw {response:{status:503},data:{detail:'Copernicus temporalmente no disponible'}}
+   return {status:'PROCESSING'}
+  }
+  if(path.endsWith('/satellite-status'))return {status:processing?'PROCESSING':'AVAILABLE',message:'Estado confirmado'}
+  return {items:[{id:'saved-scene',captured_at:'2026-10-19T12:00:00Z'}]}
+ }}),
+})
+const saved=useParcelSatelliteHistory({value:'parcel'})
+await initialLoad
+assert.equal(saved.refreshing.value,true,'Opening a saved parcel follows pending downloads automatically')
+assert.equal(saved.history.value[0].id,'saved-scene')
+processing=false
+await savedQueue.shift()()
+await new Promise(resolve=>setImmediate(resolve))
+assert.equal(saved.refreshing.value,false)
+failRefresh=true
+await saved.refresh()
+assert.equal(saved.message.value,'','A failed request must not keep the searching message visible')
+assert.equal(saved.error.value,'Copernicus temporalmente no disponible')
+assert.equal(saved.history.value[0].id,'saved-scene','Refresh errors preserve existing imagery')
+console.log('Saved parcel polling, provider errors, retained imagery and failed-request messages verified.')

@@ -6,6 +6,8 @@ const message = computed(() => {
   if (props.reason === 'provider_auth') return 'La credencial de IA no está autorizada. Un administrador debe renovarla y probar la conexión.'
   if (props.reason === 'provider_quota') return 'La cuota del servicio de IA se agotó. Un administrador debe revisar el saldo.'
   if (props.reason === 'provider_limited') return 'El servicio de IA está limitando temporalmente las consultas.'
+  if (props.reason === 'provider_model') return 'El modelo configurado para esta consulta no está disponible. Un administrador debe seleccionar y probar otro modelo.'
+  if (props.reason === 'provider_output_limit') return 'La respuesta de IA alcanzó su límite antes de terminar. Un administrador debe revisar el límite de respuesta.'
   if (props.reason === 'agent_not_configured') return 'No hay un agente activo para este cultivo. Un administrador puede configurarlo.'
   if (props.reason === 'provider_not_configured') return 'El servicio de IA no tiene una credencial configurada.'
   return 'El servicio de IA no respondió en esta consulta.'

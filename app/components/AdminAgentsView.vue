@@ -17,7 +17,7 @@ const purposes = [
   { label: 'Chat contextual', value: 'CROP_CHAT' },
   { label: 'Análisis de Copernicus y geozona', value: 'SATELLITE_ANALYSIS' },
   { label: 'Análisis ambiental desde la siembra', value: 'PHENOLOGY_ANALYSIS' },
-  { label: 'Boletín automático de 72 horas', value: 'DAILY_DIGEST' }
+  { label: 'Redacción de avisos y alertas', value: 'DAILY_DIGEST' }
 ]
 
 const agentTypes: Record<string,string> = { ORCHESTRATOR: 'Orquestador', RAG_CROP: 'Agro', PDF_REPORT: 'Académico', WEATHER_ANALYSIS: 'Datos', ALERT_ANALYSIS: 'Agro', DISEASE_ANALYSIS: 'Agro', FORECAST_ANALYSIS: 'Datos', CROP_CHAT: 'Chat', SATELLITE_ANALYSIS: 'GIS', PHENOLOGY_ANALYSIS: 'Agro', DAILY_DIGEST: 'Notificador' }

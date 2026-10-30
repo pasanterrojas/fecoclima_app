@@ -22,6 +22,7 @@ watch(() => route.path, () => { open.value = false })
 <template>
   <div class="admin-layout" :class="{ 'admin-mobile-mode': mobileMode }" @keydown.esc="open = false">
     <a class="admin-skip-link" href="#admin-main-content">Ir al contenido</a>
+    <AdminToasts />
     <AdminSidebar :open="open" :mobile-mode="mobileMode || smallScreen" @close="open = false" />
     <div class="admin-main">
       <AdminHeader :mobile-mode="mobileMode" :menu-open="open" @menu="open = !open" @toggle-mobile="mobileMode = !mobileMode" />
