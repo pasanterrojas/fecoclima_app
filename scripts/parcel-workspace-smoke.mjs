@@ -16,6 +16,7 @@ import { join } from 'node:path'
 const appUrl = process.env.MAP_TEST_URL || 'http://localhost:3037/fecoclima-ia'
 const draftKey = 'fecoclima-parcel-draft'
 const withoutWebGL = process.env.MAP_TEST_DISABLE_WEBGL === '1'
+const technicalSources = process.env.MAP_TEST_TECHNICAL_SOURCES === '1'
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 let chrome, profile, socket, targetId, cdpBase
 const pending = new Map()
@@ -54,7 +55,7 @@ async function startChrome() {
   assert(binary, 'Chrome not found. Set CHROME_BIN or CDP_BASE_URL.')
   profile = await mkdtemp(join(tmpdir(), 'fecoclima-map-smoke-'))
   const args = [
-    '--headless=new', '--no-first-run', '--no-default-browser-check',
+    '--headless=new', '--ignore-certificate-errors', '--no-first-run', '--no-default-browser-check',
     '--disable-dev-shm-usage', '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding', '--use-gl=angle', '--use-angle=swiftshader',
     '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
@@ -105,6 +106,7 @@ async function cleanup() {
 
 const polygon = {type:'Polygon',coordinates:[[[-57.65,-25.31],[-57.62,-25.31],[-57.62,-25.29],[-57.65,-25.31]]]}
 const station = {id:'station-1',name:'Estación prueba',map_color:'#9b5de5',latitude:-25.3,longitude:-57.63,influence_geojson:polygon}
+const publicMapStations=[station,{...station,id:'north-station',latitude:-23.5,longitude:-56},{...station,id:'south-station',latitude:-26.8,longitude:-55}]
 const user = {id:'user-1',name:'Productor de prueba',email:'test@example.com',role:'productor'}
 const draft = {name:'Lote Norte',producer_name:'Productor de prueba',producer_document:'1234567',crop_id:'crop-1',planting_date:'2026-09-01',geojson:polygon}
 const spectralLegend={version:'client-annex-v1',source:'Anexo técnico del cliente',classes:[{label:'≤ 0,3',color:'#FF2200'},{label:'> 0,3 a 0,4',color:'#FF9900'},{label:'> 0,4 a 0,5',color:'#FFFF00'},{label:'> 0,5 a 0,6',color:'#7AAB00'},{label:'> 0,6',color:'#006100'}]}
@@ -125,10 +127,25 @@ const analysisPeriods=[]
 const interpretationPeriods=[]
 let labelResponses=0
 let hdTested=false
+let climateRequests=0, climatePolls=0
+const climateTiles=[]
 function snapshot(){
  const alert={level:'MODERADA',conditions_met:3,conditions_total:6,confidence_pct:99,completion_percentage:100,conditions:[{key:'humidity',label:'Humedad relativa',status:'met',value:85,unit:'%'}],diseases:[]}
  const row={station_id:station.id,hours:72,samples:72,expected_samples:72,completeness_pct:100,values:{},rule_values:{},alert,quality:{completion_percentage:100,record_completeness_percentage:100,variable_completeness_percentage:100,missing_variables:[],outliers:0}}
- return {id:`analysis-${analyses}`,plot_id:parcel.id,created_at:'2026-10-19T12:05:00Z',reference_at:'2026-10-19T12:00:00Z',agent_results:{},context:{alert_scale:'six-conditions-v2',plot:parcel,crop:{id:'crop-1',code:'TRIGO',name:'Trigo'},station_influences:[{station_id:station.id,name:station.name,coverage_pct:100,distance_m:1250}],spatial_coverage_pct:100,raw_readings:[{station_id:station.id,name:station.name,reading:{sampled_at:'2026-10-19T12:00:00Z',temperature_c:25,humidity_pct:85,soil_moisture_pct:analyses===2?null:69,soil_temperature_c:22,rain_mm:2},sensor_units:{soil_moisture_pct:'cb'},soil_tension:analyses===2?null:{value:69,unit:'cb',position_pct:34.5,band_index:3,label:'Suelo seco',description:'Revise el suelo.',bands:[{min:0,max:10,label:'Suelo saturado',description:'Agua abundante',color:'#48a6d5'},{min:60,max:100,label:'Suelo seco',description:'Revise humedad',color:'#f49a40'}]}}],selected_window_hours:selectedPeriod,windows:{[selectedPeriod]:{hours:selectedPeriod,stations:[{...row,hours:selectedPeriod}],level:'MODERADA',representative_alert:alert}},phenology:{stage_name:'Vegetativo',days_after_planting:48,stage_progress_pct:45,timeline:[]},satellite:selectedAnalysisScene,satellite_selection:{mode:'selected',observation_id:selectedAnalysisScene.id},radar:null,inspection_point:{latitude:-25.3,longitude:-57.63,maps_url:'https://www.google.com/maps'},forecast:{status:'NOT_AVAILABLE',days:[]},historical_regression:[],limitations:[]}}
+ const result = {id:`analysis-${analyses}`,plot_id:parcel.id,created_at:'2026-10-19T12:05:00Z',reference_at:'2026-10-19T12:00:00Z',agent_results:{},context:{alert_scale:'six-conditions-v2',plot:parcel,crop:{id:'crop-1',code:'TRIGO',name:'Trigo'},station_influences:[{station_id:station.id,name:station.name,coverage_pct:100,distance_m:1250}],spatial_coverage_pct:100,raw_readings:[{station_id:station.id,name:station.name,reading:{sampled_at:'2026-10-19T12:00:00Z',temperature_c:25,humidity_pct:85,soil_moisture_pct:analyses===2?null:69,soil_temperature_c:22,rain_mm:2},sensor_units:{soil_moisture_pct:'cb'},soil_tension:analyses===2?null:{value:69,unit:'cb',position_pct:34.5,band_index:3,label:'Suelo seco',description:'Revise el suelo.',bands:[{min:0,max:10,label:'Suelo saturado',description:'Agua abundante',color:'#48a6d5'},{min:60,max:100,label:'Suelo seco',description:'Revise humedad',color:'#f49a40'}]}}],selected_window_hours:selectedPeriod,windows:{[selectedPeriod]:{hours:selectedPeriod,stations:[{...row,hours:selectedPeriod}],level:'MODERADA',representative_alert:alert}},phenology:{stage_name:'Vegetativo',days_after_planting:48,stage_progress_pct:45,timeline:[]},satellite:selectedAnalysisScene,satellite_selection:{mode:'selected',observation_id:selectedAnalysisScene.id},radar:null,inspection_point:{latitude:-25.3,longitude:-57.63,maps_url:'https://www.google.com/maps'},forecast:{status:'COMPLETED',provider:'FECOCLIMA_BLEND',days:[1,2,3].map(i=>({date:'2026-10-'+String(19+i),temperature_min_c:18,temperature_max_c:30,precipitation_mm:i*4,humidity_pct:70,variables:{precipitation_mm:{value:i*4,unit:'mm'},humidity_pct:{value:70,unit:'%'},wind_speed_ms:{value:2,unit:'m/s'}}}))},historical_regression:[],limitations:[]}}
+ if(technicalSources){
+  result.context.crop={id:'crop-1',code:'SOJA',name:'Soja'}
+  result.context.phenology={stage_code:'R5',stage_name:'Llenado de granos R5',days_after_planting:48,stage_progress_pct:45,timeline:[]}
+  const source={document:'Soja fenologia y Clima para agrobuch.xlsx',page_or_section:'Por Ciclo!G13:S13'}
+  result.context.water_balance={revision:'fixture',crop_code:'SOJA',current_stage_code:'R5',status:'AVAILABLE',required_mm_per_day:6,demand_source:source,susceptibility:{actual_loss_pct:null,loss_probability_pct:null,reference_pct:40,explanation:'La fuente indica 40% de susceptibilidad bajo estrés; no es daño observado ni pérdida estimada de esta parcela.'},stations:[{station_id:station.id,name:station.name,compared_days:2,closed_days:48,rain_compared_mm:2,required_compared_mm:12,rain_minus_requirement_mm:-10,current_stage_gap_mm:-10,current_stage_compared_days:2,current_stage_closed_days:3,days:[{date:'2026-10-16',stage_code:'R5',required_mm:6,rain_mm:2,et_mm:null,rain_minus_requirement_mm:-4},{date:'2026-10-17',stage_code:'R5',required_mm:6,rain_mm:0,et_mm:null,rain_minus_requirement_mm:-6},{date:'2026-10-18',stage_code:'R5',required_mm:6,rain_mm:null,et_mm:null,rain_minus_requirement_mm:null}]}],limitations:['No se asume cero donde falta un sensor.','No mide reservas de suelo ni cuantifica daños.']}
+  result.context.reference_sources=[{document:source.document,sha256:'fixture-source'}]
+  result.context.windows[selectedPeriod].level='EVALUACION_PARCIAL'
+  alert.level='EVALUACION_PARCIAL';alert.assessment_status='PARTIAL';alert.conditions_evaluated=5
+  alert.simple_explanation='Se utilizan las señales reportadas; la humedad del aire no se reporta y no equivale a cero.'
+  alert.conditions=[{key:'temperature',label:'Temperatura',status:'met',value:25,unit:'°C'},{key:'humidity',label:'Humedad relativa',status:'missing',value:null,unit:'%',explanation:'Sensor no reportado en este período.'}]
+  result.context.raw_readings[0].reading.humidity_pct=null
+ }
+ return result
 }
 async function intercept(params,sessionId){
  const sessionSend=(method,params)=>send(method,params,sessionId)
@@ -143,7 +160,8 @@ async function intercept(params,sessionId){
   const metadata={tiles:['http://localhost:8000/api/v1/public/test-scene/ndvi.png?z={z}&x={x}&y={y}'],maxzoom:20,attribution:'Proveedor de prueba'}
   await sessionSend('Fetch.fulfillRequest',{requestId:params.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:new URL(appUrl).origin}],body:Buffer.from(JSON.stringify(metadata)).toString('base64')});return
  }
- if(path==='/public/test-scene/ndvi.png'&&method==='GET'){
+ if((path==='/public/test-scene/ndvi.png'||path.startsWith('/public/map/analyses/')&&path.endsWith('.png'))&&method==='GET'){
+  if(path.startsWith('/public/map/'))climateTiles.push(path)
   await sessionSend('Fetch.fulfillRequest',{requestId:params.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'image/png'},{name:'Access-Control-Allow-Origin',value:new URL(appUrl).origin},{name:'Access-Control-Allow-Credentials',value:'true'}],body:'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEElEQVR4nGNgWJXyH4xhDABEeAg1bIW/fgAAAABJRU5ErkJggg=='});return
  }
  let result={}, status=200
@@ -151,7 +169,10 @@ async function intercept(params,sessionId){
  else if(path==='/parcels/browser-session')result={browser_id:'11111111-1111-4111-8111-111111111111',access_token:'public-test-browser-capability',limit:3}
  else if(path==='/auth/session')result={user,refresh_available:false}
  else if(path==='/auth/refresh'){refreshes++;expired=false;result=user}
- else if(path==='/public/stations')result=[station]
+ else if(path==='/public/stations')result=publicMapStations
+ else if(path==='/public/map/analyses'&&method==='POST'){climateRequests++;assert(Object.keys(params.request.headers).some(key=>key.toLowerCase()==='x-parcel-access'));result={job_id:'climate-job',status:'PENDING'}}
+ else if(path==='/public/map/analyses/climate-job'){climatePolls++;result=climatePolls===1?{job_id:'climate-job',status:'RUNNING'}:{job_id:'climate-job',status:'COMPLETED',snapshot:{reference_at:'2026-10-30T12:00:00Z',from:'2026-10-27T12:00:00Z',window_hours:72,stations:[...publicMapStations.map((s,i)=>({...s,values:{temperature:20+i*5,wind:2+i*3,humidity:null}})),{...station,id:'missing-reading',values:{temperature:null,wind:null,humidity:null}}],variables:[{id:'temperature',label:'Temperatura',unit:'°C',minimum:20,maximum:30,available_stations:3,palette:['#1764c0','#f5c400','#c51b32']},{id:'wind',label:'Viento',unit:'m/s',minimum:0,maximum:10,available_stations:3,palette:['#54208c','#cd477e','#e6c700']},{id:'humidity',label:'Humedad',unit:'%',minimum:0,maximum:100,available_stations:2,palette:['#9ecb18','#00a882','#1251a0']}]}}}
+
  else if(path==='/public/crops')result=[{id:'crop-1',code:'TRIGO',name:'Trigo'}]
  else if(path==='/public/parcel-imagery' && method==='POST'){previewRequests++;if(new URL(params.request.url).searchParams.get('force')==='true')forcedPreviewRequests++;await pause(1400);assert(Object.keys(params.request.headers).some(key=>key.toLowerCase()==='x-parcel-session'));result={id:'preview-1',status:'PROCESSING',history:forcedPreviewRequests?[newestSpectralScene,...spectralHistory]:[],satellite:forcedPreviewRequests?newestSpectralScene:null,area_ha:50,message:'Buscando una escena útil.'}}
  else if(path==='/public/parcel-imagery/preview-1' && method==='GET')result={id:'preview-1',status:'AVAILABLE',history:forcedPreviewRequests?[newestSpectralScene,...spectralHistory]:spectralHistory,satellite:forcedPreviewRequests?newestSpectralScene:spectralScene,area_ha:50,message:'Escena de prueba disponible.'}
@@ -203,7 +224,7 @@ async function intercept(params,sessionId){
    else result={images_processed:true,messages:[{role:'user',content:'Así está mi cultivo'},{role:'assistant',content:'Recibí la fotografía.'}]}
   }
  }
- else if(path.endsWith('/interpret')){const {purpose,window_hours,view_mode}=JSON.parse(params.request.postData);interpretations.push(purpose);interpretationPeriods.push(window_hours);assert.equal(window_hours,selectedPeriod);result={purpose,window_hours,view_mode,status:'completed',markdown:`Agente ${purpose}: interpretación verificada`,sources:[]}}
+ else if(path.endsWith('/interpret')){const {purpose,window_hours,view_mode}=JSON.parse(params.request.postData);interpretations.push(purpose);interpretationPeriods.push(window_hours);assert.equal(window_hours,selectedPeriod);result={purpose,window_hours,view_mode,status:'completed',markdown:`Agente ${purpose}: interpretación verificada`,sources:[{document:'Referencia de prueba.xlsx'}]}}
  if(rawPath.startsWith('/public/parcels') && !path.endsWith('/browser-session') && method!=='OPTIONS'){
   assert.equal(Object.entries(params.request.headers).find(([key])=>key.toLowerCase()==='x-parcel-access')?.[1],'public-test-browser-capability')
  }
@@ -224,6 +245,7 @@ try {
  })
  await send('Page.enable');await send('Runtime.enable');await send('Network.enable')
  await send('Emulation.setTimezoneOverride',{timezoneId:'America/Costa_Rica'})
+ await send('Page.addScriptToEvaluateOnNewDocument',{source:`Object.defineProperty(window,'L',{configurable:true,set(value){Object.defineProperty(window,'L',{value,writable:true,configurable:true});value.Map.addInitHook(function(){window.__workspaceMap=this})}})`})
  await send('Page.addScriptToEvaluateOnNewDocument',{source:'window.__fecoclimaSmokeDocument=crypto.randomUUID()'})
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false})
  // Deliberately run with no account, refresh or CSRF cookies.
@@ -233,6 +255,11 @@ try {
  await waitFor(()=>evaluate(`!!document.querySelector('.analyze-map') && !document.querySelector('.analyze-map').disabled`),'restored parcel and coverage')
  await waitFor(()=>evaluate(`!!document.querySelector('.imagery-preview-status .satellite-loading')`),'modern loading appears immediately for polygon imagery')
  assert(await evaluate(`document.querySelector('.imagery-preview-status').getAttribute('aria-busy')==='true'`),'Satellite loading announces busy state')
+ await waitFor(()=>evaluate(`window.__workspaceMap && document.querySelectorAll('.map-frame img.weather-station-marker').length===3`),'all stations loaded in the initial map')
+ const initialFit=await evaluate(`(()=>{const map=window.__workspaceMap,points=${JSON.stringify(publicMapStations.map(s=>[s.latitude,s.longitude]))};const bounds=window.L.latLngBounds(points),next=map.getBoundsZoom(bounds,false,[90,90]);return {all:points.every(p=>map.getBounds().contains(p)),zoom:map.getZoom(),closest:next,satellite:document.querySelector('.map-frame [aria-label="Tipo de mapa"] button.active')?.textContent.trim()}})()`)
+ assert(initialFit.all,'Reload includes all station locations even with a saved parcel')
+ assert.equal(initialFit.zoom,initialFit.closest,'The initial view uses the closest zoom that fits all stations')
+ assert.equal(initialFit.satellite,'Satélite','Reload starts in satellite view')
  assert(await evaluate(`document.querySelector('.analyze-map').textContent.trim()==='Análisis IA' && !document.querySelector('.last-analysis-time')`),'Initial analysis action is concise and has no fabricated timestamp')
  assert(await evaluate(`!document.body.innerText.includes('Ingresar para analizar')&&!document.body.innerText.includes('Inicie sesión como productor')`),'The public portal never asks for a login')
  assert(await evaluate(`(()=>{const menu=document.querySelector('.map-frame .map-controls-menu'),map=document.querySelector('.map-frame .world-map-shell');const sidebar=menu.closest('.map-sidebar-controls').getBoundingClientRect(),canvas=map.getBoundingClientRect();return menu.open && sidebar.right<=canvas.left && Math.abs(sidebar.width*3-canvas.width)<10})()`),'Compact controls occupy three columns beside the nine-column map')
@@ -272,24 +299,32 @@ try {
  assert(await evaluate(`document.querySelector('.map-frame .spectral-legend li i').style.backgroundColor==='rgb(255, 34, 0)' && document.querySelector('.map-frame .spectral-legend').textContent.includes('0,6')`),'Legend uses client HEX colors and boundaries')
  assert(await evaluate(`document.querySelector('.map-frame .index-explanation').textContent.includes('vegetación activa')`),'Legend explains NDVI in producer language')
  await evaluate(`document.querySelector('.map-frame .imagery-options button[data-layer="recl"]').click()`)
- await waitFor(()=>evaluate(`document.querySelector('.map-frame .spectral-legend li:last-child span').textContent==='> 4' && document.querySelector('.map-frame .spectral-legend').textContent.includes('B07 / B05')`),'ReCl corrected fifth class and formula')
+ await waitFor(()=>evaluate(`document.querySelector('.map-frame .spectral-legend li:last-child span').textContent==='> 4' && !document.querySelector('.map-frame .spectral-legend').textContent.includes('B07 / B05')`),'ReCl scale stays visible while technical formula is hidden for producer')
  await evaluate(`document.querySelector('.map-frame .imagery-options button[data-layer="ndvi"]').click()`)
  await evaluate(`(()=>{const range=document.querySelector('.map-frame .imagery-opacity input');range.value='0.35';range.dispatchEvent(new Event('input',{bubbles:true}))})()`)
  await waitFor(()=>evaluate(`document.querySelector('.map-frame .imagery-opacity output').textContent==='35%'`),'layer opacity control')
- if(withoutWebGL)assert(await evaluate(`document.querySelector('.map-frame svg.overlay image[opacity]').getAttribute('opacity')==='0.35'`),'CPU renderer applies the same opacity')
+ if(withoutWebGL)assert(await evaluate(`document.querySelector('.map-frame .leaflet-image-layer').style.opacity==='0.35'`),'CPU renderer applies the same opacity')
  await evaluate(`document.querySelector('.map-frame .imagery-options button[data-layer="none"]').click()`)
  assert(await evaluate(`document.querySelector('.map-frame .imagery-opacity input').disabled`),'No-layer mode disables opacity')
- if(withoutWebGL)assert(await evaluate(`!document.querySelector('.map-frame svg.overlay image[opacity]')`),'No-layer mode removes the imagery overlay')
+ if(withoutWebGL)assert(await evaluate(`!document.querySelector('.map-frame .leaflet-image-layer')`),'No-layer mode removes the imagery overlay')
  await evaluate(`document.querySelector('.map-frame .imagery-options button[data-layer="ndvi"]').click()`)
  assert(await evaluate(`!document.querySelector('.map-frame .imagery-opacity input').disabled && document.querySelector('.map-frame .imagery-opacity output').textContent==='35%'`),'Selecting a layer restores its visibility setting')
 
  if(!withoutWebGL){
   await waitFor(()=>evaluate(`[...document.querySelectorAll('.map-frame .map-tools button')].some(button=>button.textContent.includes('Editar vértices')&&!button.disabled)`),'restored geometry ready in the WebGL editor');await pause(1000)
-  assert(await evaluate(`document.querySelector('.map-frame .map-tool-group button.active')?.textContent.trim()==='Satélite' || (${process.env.MAP_TEST_MULTI_PARCEL==='1'} && !!document.querySelector('.map-frame .map-error.map-warning'))`),'Map preserves satellite or clearly reports the external provider fallback')
   assert(await evaluate(`!document.querySelector('.map-frame .map-error') || (${process.env.MAP_TEST_MULTI_PARCEL==='1'} && !!document.querySelector('.map-frame .map-error.map-warning'))`),'Map remains usable when an external background needs its fallback')
  }
+ assert(await evaluate(`document.querySelector('.map-frame [aria-label="Tipo de mapa"] button.active')?.textContent.trim()==='Satélite'`),'Public workspace starts with the satellite basemap')
  if(process.env.MAP_TEST_SETUP_SCREENSHOT){await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1200,deviceScaleFactor:1,mobile:false});await evaluate(`(()=>{document.querySelector('.map-frame').scrollIntoView({block:'start'});window.scrollBy(0,-90)})()`);await pause(300);const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(process.env.MAP_TEST_SETUP_SCREENSHOT,Buffer.from(shot.data,'base64'))}
  await evaluate(`[...document.querySelectorAll('.map-frame .controls-tabs button')].find(button=>button.textContent.includes('Vista del mapa')).click()`)
+ // Switching backgrounds must preserve the existing parcel imagery.
+ const previewsBeforeBasemapChange=previewRequests
+ await evaluate(`[...document.querySelectorAll('.map-frame [aria-label="Tipo de mapa"] button')].find(button=>button.textContent.trim()==='Calles').click()`)
+ if(!withoutWebGL)await waitFor(()=>evaluate(`[...document.querySelectorAll('.map-frame .map-tools button')].some(button=>button.textContent.includes('Editar vértices')&&!button.disabled)`),'editor restored with the street background')
+ await evaluate(`[...document.querySelectorAll('.map-frame [aria-label="Tipo de mapa"] button')].find(button=>button.textContent.trim()==='Satélite').click()`)
+ if(!withoutWebGL)await waitFor(()=>evaluate(`[...document.querySelectorAll('.map-frame .map-tools button')].some(button=>button.textContent.includes('Editar vértices')&&!button.disabled)`),'editor restored after changing the background')
+ await pause(1000)
+ assert.equal(previewRequests,previewsBeforeBasemapChange,'Changing the background preserves the parcel imagery without querying it again')
  await evaluate(`(()=>{const select=document.querySelector('.analysis-period');select.value='96';select.dispatchEvent(new Event('change',{bubbles:true}))})()`)
  assert.equal(analyses,0,'Changing the period does not trigger analysis')
  assert(await evaluate(`document.querySelector('.scroll-toggle').getAttribute('aria-pressed')==='false'`))
@@ -298,46 +333,55 @@ try {
  assert(await evaluate(`(()=>{const target=document.querySelector('.map-frame canvas.maplibregl-canvas')||document.querySelector('.map-frame .polygon-editor .map');const event=new WheelEvent('wheel',{deltaY:-120,clientX:target.getBoundingClientRect().left+100,clientY:target.getBoundingClientRect().top+100,bubbles:true,cancelable:true});target.dispatchEvent(event);return event.defaultPrevented})()`),'Enabled wheel is handled by the map')
  await evaluate(`document.querySelector('.scroll-toggle').click()`)
  assert(await evaluate(`document.querySelector('.scroll-toggle').getAttribute('aria-pressed')==='false'`))
- assert(await evaluate(`(()=>{const icon=document.querySelector('.weather-station-marker img')||document.querySelector('.weather-station-symbol image');return (icon?.getAttribute('src')||icon?.getAttribute('href'))==='/fecoclima-estacion-marcador.svg'})()`),'Client supplied station marker is used')
- if(withoutWebGL || process.env.MAP_TEST_MULTI_PARCEL!=='1')await waitFor(()=>labelResponses>0,'real labels/roads tiles loaded')
- assert(await evaluate(`!!document.querySelector('.weather-station-marker,.weather-station-symbol')`),'Station uses a weather icon')
- assert(await evaluate(`(()=>{const label=document.querySelector('.weather-station-marker span');return label ? label.style.borderLeftColor==='rgb(155, 93, 229)' : document.querySelector('.weather-station-symbol text').getAttribute('fill')==='#9b5de5'})()`),'Station label retains the configured influence color')
- if(withoutWebGL){
-  assert(await evaluate(`document.querySelectorAll('.map-frame .labels-tile').length>0`))
-  await evaluate(`document.querySelector('.labels-toggle').click()`)
-  await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame .labels-tile').length===0`),'labels hidden independently of imagery')
-  await evaluate(`document.querySelector('.labels-toggle').click()`)
- }
- if(process.env.MAP_TEST_FORCE_HD==='1')assert(await evaluate(`(()=>{const config=document.querySelector('#__nuxt').__vue_app__?.config.globalProperties.$nuxt?.$config;if(!config)return false;config.public.mapTilerKey='fixture-public-maptiler-key';return true})()`),'Test runtime can expose the HD selector without a real API key')
- if(await evaluate(`[...document.querySelectorAll('.map-frame [aria-label="Tipo de mapa"] button')].some(button=>button.textContent.trim()==='Satélite HD')`)){
-  await evaluate(`[...document.querySelectorAll('.map-frame [aria-label="Tipo de mapa"] button')].find(button=>button.textContent.trim()==='Satélite HD').click()`)
-  await waitFor(()=>evaluate(`[...document.querySelectorAll('.map-frame [aria-label="Tipo de mapa"] button.active')].some(button=>button.textContent.trim()==='Satélite HD')`),'HD tiles metadata works in current renderer')
-  assert(await evaluate(`!!document.querySelector('.maptiler-logo')`),'HD attribution includes provider logo')
-  await evaluate(`[...document.querySelectorAll('.map-frame [aria-label="Tipo de mapa"] button')].find(button=>button.textContent.trim()==='Satélite').click()`)
-  if(!withoutWebGL)await waitFor(()=>evaluate(`[...document.querySelectorAll('.map-frame .map-tools button')].some(button=>button.textContent.includes('Editar vértices')&&!button.disabled)`),'editor restored after HD change')
-  hdTested=true
- }
+ assert(await evaluate(`document.querySelector('img.weather-station-marker')?.getAttribute('src')==='/fecoclima-estacion-marcador.svg'`),'Client station marker is preserved')
+ await waitFor(()=>labelResponses>0,'labels/roads tiles requested')
+ assert(await evaluate(`document.querySelector('.station-influence')?.getAttribute('stroke')==='#9b5de5'`),'Influence uses configured station color')
+ await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame .labels-tile').length>0`),'Leaflet labels loaded')
+ await evaluate(`document.querySelector('.labels-toggle').click()`)
+ await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame .labels-tile').length===0`),'labels hidden independently')
+ await evaluate(`document.querySelector('.labels-toggle').click()`)
+ assert(await evaluate(`![...document.querySelectorAll('[aria-label="Tipo de mapa"] button')].some(button=>button.textContent.includes('HD'))`),'Only open basemaps are offered')
+ assert.equal(climateRequests,0,'Opening the parcel map never refreshes all stations')
+ assert(await evaluate(`!!document.querySelector('.visibility-section .consult-all-stations')`),'All-station consultation lives under Qué mostrar')
+ const previewsBeforeClimate=previewRequests
+ await evaluate(`document.querySelector('.consult-all-stations').click()`)
+ await waitFor(()=>evaluate(`!!document.querySelector('.station-climate-variable select')`),'all-station snapshot in the existing map')
+ await waitFor(()=>climateTiles.some(path=>path.includes('/tiles/temperature/')),'climate colors added to the parcel map')
+ assert.equal(climateRequests,1);assert.equal(analyses,0,'Station consultation does not run parcel AI');assert.equal(previewRequests,previewsBeforeClimate,'Climate overlay preserves parcel imagery')
+ assert(await evaluate(`!document.querySelector('.station-climate-variable option[value="humidity"]')&&!document.querySelector('.regional-map')`),'Only supported variables, without the regional-map page controls')
+ await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame .station-reading-marker').length===3`),'station values replace icons')
+ assert(await evaluate(`document.querySelector('.station-climate-scale-values')?.textContent.includes('20 °C')&&document.querySelector('.station-climate-scale-values')?.textContent.includes('30 °C')`),'Color legend below the selector shows the variable range')
+ assert(await evaluate(`!document.querySelector('.map-frame img.weather-station-marker')&&!document.querySelector('[data-station-value="missing-reading"]')`),'Icons and stations without readings are omitted in station mode')
+ assert(await evaluate(`getComputedStyle(document.querySelector('.visibility-options')).display==='none'&&getComputedStyle(document.querySelector('.basemap-section')).display==='none'`),'Station mode replaces the conventional controls')
+ await evaluate(`(()=>{const s=document.querySelector('.station-climate-variable select');s.value='wind';s.dispatchEvent(new Event('change',{bubbles:true}))})()`)
+ await waitFor(()=>climateTiles.some(path=>path.includes('/tiles/wind/')),'changing the variable changes the effect')
+ await waitFor(()=>evaluate(`document.querySelector('[data-station-value="station-1"]')?.textContent.includes('2 m/s')`),'Map values follow the selected variable')
+ assert(await evaluate(`document.querySelector('.station-climate-scale-values')?.textContent.includes('10 m/s')`),'Legend follows the selected variable')
+ await evaluate(`document.querySelector('.exit-station-view').click()`)
+ await waitFor(()=>evaluate(`document.querySelectorAll('.leaflet-stationClimate-pane img').length===0&&document.querySelectorAll('.map-frame img.weather-station-marker').length===3`),'Exit restores station icons and removes the climate effect')
+ assert(await evaluate(`!document.querySelector('.station-climate-variable')&&getComputedStyle(document.querySelector('.visibility-options')).display!=='none'&&getComputedStyle(document.querySelector('.basemap-section')).display!=='none'`),'Exit restores conventional controls')
+ assert.equal(climateRequests,1,'Leaving station mode never starts another consultation')
  await waitFor(()=>evaluate(`!document.querySelector('.analyze-map').disabled`),'coverage validation settled after switching basemaps')
  await evaluate(`(()=>{const select=document.querySelector('.map-frame .map-scene-selector select');select.value='scene-before';select.dispatchEvent(new Event('change',{bubbles:true}))})()`)
  await waitFor(()=>evaluate(`document.querySelector('.spectral-meta').textContent.includes('19 oct')`),'older image selected before the first AI run')
  await evaluate(`document.querySelector('.analyze-map').click()`)
- await waitFor(()=>interpretations.length===4,'all specialist agents and orchestrator')
+ await waitFor(()=>interpretations.length===5,'all specialist agents and orchestrator')
  await waitFor(()=>evaluate(`document.body.innerText.includes('Agente ORCHESTRATOR: interpretación verificada')`),'orchestrator widget')
- assert.equal(interpretations[3],'ORCHESTRATOR')
- assert.deepEqual(interpretations,['RAG_CROP','WEATHER_ANALYSIS','SATELLITE_ANALYSIS','ORCHESTRATOR'])
- assert.deepEqual(interpretationPeriods,[96,96,96,96])
+ assert.equal(interpretations[4],'ORCHESTRATOR')
+ assert.deepEqual(interpretations,['RAG_CROP','WEATHER_ANALYSIS','SATELLITE_ANALYSIS','PHENOLOGY_ANALYSIS','ORCHESTRATOR'])
+ assert.deepEqual(interpretationPeriods,[96,96,96,96,96])
  await evaluate(`(()=>{const select=document.querySelector('.map-frame .map-scene-selector select');select.value='scene-before';select.dispatchEvent(new Event('change',{bubbles:true}))})()`)
  await waitFor(()=>evaluate(`document.querySelector('.spectral-meta').textContent.includes('19 oct')`),'saved parcel supports historical scenes')
  await evaluate(`document.querySelector('.latest-imagery-button').click()`)
  await waitFor(()=>satelliteRefreshes===1,'saved parcel requests satellite-only refresh')
  await waitFor(()=>evaluate(`!document.querySelector('.latest-imagery-button').disabled && document.querySelector('.spectral-meta').textContent.includes('19 oct')`),'saved parcel returns to latest scene')
- assert.equal(interpretations.length,4,'Historical imagery and latest-scene lookup keep the analysis intact')
+ assert.equal(interpretations.length,5,'Historical imagery and latest-scene lookup keep the analysis intact')
  assert(await evaluate(`(()=>{const left=document.querySelector('.alert-summary').getBoundingClientRect(),right=document.querySelector('.alert-evaluation').getBoundingClientRect();return right.left>left.right})()`),'Alert summary and evaluation use two columns')
- assert(await evaluate(`document.querySelector('.diagnosis-timeframes').textContent.includes('96 horas')&&document.querySelector('.diagnosis-timeframes').textContent.includes('3 días')`),'Observed and future horizons are distinct')
+ assert(await evaluate(`document.querySelector('.analyzed-period').textContent.includes('96 horas')&&document.querySelectorAll('.prediction-days article').length===3`),'Observed and future horizons are distinct')
  assert.deepEqual(await evaluate(`[...document.querySelectorAll('.steps-flow>.widget>.widget-kicker .widget-title')].map(el=>el.textContent.trim().split(' · ')[0])`),['1. Condiciones actuales','2. Tipo de alerta','3. Estado fenológico','4. Análisis de la IA','5. Predicción','6. Chatbot'])
  assert(await evaluate(`document.querySelector('.analyze-map').textContent.trim()==='Nuevo análisis IA' && document.querySelector('.last-analysis-time time').getAttribute('datetime')==='2026-10-19T12:05:00Z'`),'Completed analysis shows its action and actual creation timestamp')
  assert(await evaluate(`!!document.querySelector('.analysis-results-card>.snapshot-line') && document.querySelectorAll('.analysis-results-card .steps-flow>.widget').length===6`),'Situation decorates the card containing all six widgets')
- assert(await evaluate(`!!document.querySelector('.workspace-heading .parcel-selector + .parcel-alerts-button') && document.querySelector('.parcel-alerts-button').getAttribute('href').includes('parcela=')`),'Compact alerts action sits next to the parcel selector')
+ assert(await evaluate(`!!document.querySelector('.workspace-heading .parcel-selector ~ .parcel-alerts-button') && document.querySelector('.parcel-alerts-button').getAttribute('href').includes('parcela=')`),'Compact alerts action sits next to the parcel selector')
  assert(await evaluate(`!document.querySelector('.parcel-workspace .viewer-time-note') && document.querySelector('footer .footer-time-zone').textContent.includes('Hora de su dispositivo')`),'Device timezone and explanation live in the footer')
  const analysisCallsBeforeCollapsing=analyses
  for(let number=1;number<=6;number++){
@@ -358,11 +402,11 @@ try {
  assert(await evaluate(`document.querySelector('#parcel-question').value==='Mi consulta pendiente'`),'Guidance preserves an existing chat draft')
  assert.equal(photoChatPosts,0,'Opening the chat does not send a message')
  await evaluate(`(()=>{const input=document.querySelector('#parcel-question');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
- if(withoutWebGL)await waitFor(()=>evaluate(`document.querySelector('.compatibility-mode .overlay')?.querySelectorAll('g path[fill-rule="evenodd"]:not([data-parcel-id])').length>0`),'CPU influence polygons')
+ if(withoutWebGL)await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame .station-influence').length>0`),'CPU influence polygons')
  const draftBefore=await evaluate(`sessionStorage.getItem('fecoclima-parcel-draft')`)
  await evaluate(`document.querySelector('.influence-toggle').click()`)
  await waitFor(()=>evaluate(`document.querySelector('.influence-toggle').getAttribute('aria-pressed')==='false'`),'hidden influence state')
- if(withoutWebGL)await waitFor(()=>evaluate(`document.querySelector('.compatibility-mode .overlay')?.querySelectorAll('g path[fill-rule="evenodd"]:not([data-parcel-id])').length===0`),'hidden CPU influence polygons')
+ if(withoutWebGL)await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame .station-influence').length===0`),'hidden CPU influence polygons')
  assert.equal(await evaluate(`sessionStorage.getItem('fecoclima-parcel-draft')`),draftBefore)
 
  // An instant changes its displayed clock, never its values, age or selected period.
@@ -377,11 +421,28 @@ try {
  assert.equal(await evaluate(`document.querySelector('.condition-meter').textContent`),beforeZone.condition)
  assert.equal(await evaluate(`document.querySelector('.parcel-setup-column input[type=date]').value`),beforeZone.planting)
  await send('Emulation.setTimezoneOverride',{timezoneId:'America/Costa_Rica'})
+ await send('Page.addScriptToEvaluateOnNewDocument',{source:`Object.defineProperty(window,'L',{configurable:true,set(value){Object.defineProperty(window,'L',{value,writable:true,configurable:true});value.Map.addInitHook(function(){window.__workspaceMap=this})}})`})
  await evaluate(`window.dispatchEvent(new Event('focus'))`)
  await waitFor(()=>evaluate(`document.querySelector('.soil-visible .tension-card small').textContent.includes('UTC-6')`),'soil and station clocks react to viewer zone without another analysis')
  assert.equal(refreshes,0,'Public workflows never refresh a CMS account');assert.equal(authCalls,0,'Public workflows never request account authentication')
  assert(await evaluate(`document.querySelector('.tension-card').textContent.includes('69')`))
  assert(await evaluate(`document.querySelector('.condition-meter').textContent.includes('3 de 6')`))
+ if(technicalSources){
+  assert(await evaluate(`document.querySelector('.severity-banner').textContent.includes('evaluación parcial')`),'Missing sensor keeps useful partial alert evidence')
+  assert(await evaluate(`document.querySelector('.water-balance').textContent.includes('no es daño observado')`),'Stage water requirement and documentary loss references stay distinct')
+  assert(await evaluate(`!!document.querySelector('.water-chart canvas') && document.querySelector('.water-balance').textContent.includes('2 de 3 días')`),'Water chart shows explicit comparison coverage')
+  assert(await evaluate(`document.querySelector('.stage-card.current').textContent.includes('2 mm') && document.querySelector('.stage-card.current').textContent.includes('2 de 3') && !document.querySelector('.water-balance details')`),'Current-phase required and recorded rain use the same days')
+  assert(await evaluate(`document.querySelector('.stress-reference.high').textContent.includes('40%') && document.querySelector('.agronomic-criterion').textContent.includes('PHENOLOGY_ANALYSIS')`),'Agronomic agent criterion and phase stress reference are visible')
+  assert(await evaluate(`document.querySelector('.stage-illustration image').getAttribute('href').includes('stage-reference-10.png')`),'The current soybean phase uses the supplied workbook illustration')
+  assert(await evaluate(`(async()=>{const image=new Image();image.src=document.querySelector('.stage-illustration image').getAttribute('href');await image.decode();return image.naturalWidth===1366})()`),'Workbook illustration loads from the bundled asset')
+  if(process.env.MAP_TEST_WATER_SCREENSHOT){
+   const clip=await evaluate(`(()=>{const box=document.querySelector('.water-balance').getBoundingClientRect();return {x:box.left+window.scrollX,y:box.top+window.scrollY,width:box.width,height:box.height,scale:1}})()`)
+   const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,clip})
+   await writeFile(process.env.MAP_TEST_WATER_SCREENSHOT,Buffer.from(shot.data,'base64'))
+  }
+  assert(await evaluate(`document.querySelector('.missing-conditions').textContent.includes('Humedad relativa')`),'Unavailable sensor is named without replacing it with zero')
+ }
+
  await waitFor(()=>evaluate(`document.querySelector('.parcel-area-summary').textContent.includes('50 ha')`),'polygon surface measurement')
  assert(previewRequests>0,'Imagery is requested before AI analysis')
  assert(await evaluate(`document.querySelector('.station-identity').textContent.includes('Estación prueba')`))
@@ -390,17 +451,17 @@ try {
  await evaluate(`(()=>{const select=document.querySelector('.analysis-period');select.value='60';select.dispatchEvent(new Event('change',{bubbles:true}))})()`)
  await pause(400)
  assert.equal(analyses,1,'Selecting a new period waits for Analizar')
- assert.equal(interpretations.length,4,'Selecting a new period makes no AI calls')
+ assert.equal(interpretations.length,5,'Selecting a new period makes no AI calls')
  assert(await evaluate(`document.querySelector('.analyzed-period').textContent.includes('96')`),'Saved widgets keep their actual period until a new analysis')
  await evaluate(`document.querySelector('.analyze-map').click()`)
  await waitFor(()=>evaluate(`!!document.querySelector('.analysis-progress') && !document.querySelector('.steps-flow')`),'old widgets cleared during new analysis')
  assert(await evaluate(`document.querySelector('.analysis-stages').textContent.includes('Sincronizar estaciones')`),'New analysis displays staged progress')
  if(process.env.MAP_TEST_LOADING_SCREENSHOT){await evaluate(`document.querySelector('.analysis-progress').scrollIntoView({block:'center'})`);const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(process.env.MAP_TEST_LOADING_SCREENSHOT,Buffer.from(shot.data,'base64'))}
- await waitFor(()=>interpretations.length===8,'second analysis with same parcel')
+ await waitFor(()=>interpretations.length===10,'second analysis with same parcel')
  await waitFor(()=>evaluate(`!!document.querySelector('.steps-flow')&&!document.querySelector('.analysis-progress')`),'all new widgets ready')
  assert.deepEqual(analysisPeriods,[96,60])
  assert.deepEqual(analysisObservationIds,['scene-before','scene-test'],'Each AI run receives exactly the chosen image')
- assert.deepEqual(interpretationPeriods,[96,96,96,96,60,60,60,60])
+ assert.deepEqual(interpretationPeriods,[96,96,96,96,96,60,60,60,60,60])
  assert(await evaluate(`document.querySelector('.analyzed-period').textContent.includes('60')`))
  assert(await evaluate(`document.querySelector('.current-conditions .tension-card.unavailable')?.textContent.includes('Sin lectura disponible en cb')`),'Missing cb reading keeps the soil scale visible without fabricating a value')
  assert.equal(parcel.id,'parcel-1');assert.equal(analyses,2);assert.equal(creations,1)
@@ -418,7 +479,7 @@ try {
  assert(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth+2`),'No horizontal document overflow on smartphone')
  await evaluate(`document.querySelector('input[aria-label="Vista móvil"]').click()`)
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false})
- const clearExpression=withoutWebGL?`[...document.querySelectorAll('.map-frame .editor-toolbar button')].find(button=>button.textContent.includes('Limpiar')).click()`:`document.querySelector('.map-frame .map-tool-button.clear').click()`
+ const clearExpression=`document.querySelector('.map-frame .map-tool-button.clear').click()`
  await evaluate(clearExpression)
  await waitFor(()=>evaluate(`!!document.querySelector('[role="dialog"]')`),'polygon deletion confirmation')
  assert(await evaluate(`document.querySelector('[role="dialog"]').textContent.includes('widgets')&&!!document.querySelector('.steps-flow')`),'Warning appears before clearing widgets')
@@ -454,10 +515,10 @@ try {
   await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame [data-parcel-choice]').length===3`),'all three saved parcels displayed')
   await waitFor(()=>evaluate(`document.querySelector('.new-parcel-button').disabled`),'three parcel browser quota preserved')
   if(withoutWebGL)await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame [data-parcel-id]').length===3`),'all three polygon shapes in CPU renderer')
-  else await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame [data-map-parcel-id]').length===3`),'all three polygon features in MapLibre')
+  else await waitFor(()=>evaluate(`document.querySelectorAll('.map-frame [data-parcel-id]').length===3`),'all three polygon features in MapLibre')
   await evaluate(`[...document.querySelectorAll('.map-frame .saved-parcel-legend button')].find(button=>button.textContent==='Ver todas las parcelas').click()`)
   await pause(1000)
-  const target=await evaluate(withoutWebGL?`(()=>{const path=document.querySelector('.map-frame [data-parcel-id="parcel-2"]'),box=path.getBoundingClientRect();return {x:box.x+box.width*.75,y:box.y+box.height*.6}})()`:`(()=>{const box=document.querySelector('.map-frame [data-map-parcel-id=\"parcel-2\"]').getBoundingClientRect();return {x:box.x+box.width/2,y:box.bottom+10}})()`)
+  const target=await evaluate(`(()=>{const path=document.querySelector('.map-frame [data-parcel-id="parcel-2"]'),box=path.getBoundingClientRect();return {x:box.x+box.width*.75,y:box.y+box.height*.6}})()`)
   await send('Input.dispatchMouseEvent',{type:'mousePressed',x:target.x,y:target.y,button:'left',clickCount:1})
   await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:target.x,y:target.y,button:'left',clickCount:1})
   await waitFor(()=>evaluate(`document.querySelector('[aria-label="Seleccionar parcela"]').value==='parcel-2' && document.querySelector('.snapshot-line')?.textContent.includes('Situación')`),'click polygon selects its stored analysis')
@@ -493,10 +554,10 @@ try {
   await waitFor(()=>evaluate(`!!document.querySelector('.parcel-modal .compatibility-mode') || [...document.querySelectorAll('.parcel-modal .map-tools button')].some(button=>button.textContent.includes('Dibujar parcela')&&!button.disabled)`),'new modal map ready')
   await waitFor(()=>evaluate(`!!document.querySelector('.parcel-modal select option[value="crop-1"]')`),'crop options ready before preparing parcel')
   await evaluate(`(()=>{const fields={'Nombre de la parcela':'Lote preparado','Nombre del productor':'Productor de prueba','Cédula de identidad (CI)':'1234567','Cultivo':'crop-1','Fecha de siembra':'2026-09-01'};for(const [name,value] of Object.entries(fields)){const label=[...document.querySelectorAll('.parcel-modal label')].find(label=>label.querySelector('.label')?.textContent.trim()===name);const input=label.querySelector('input,select');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}))}})()`)
-  await evaluate(`(()=>{const selector=${JSON.stringify(withoutWebGL?'.parcel-modal .editor-toolbar button':'.parcel-modal .map-tools button')};[...document.querySelectorAll(selector)].find(button=>button.textContent.includes(${JSON.stringify(withoutWebGL?'Dibujar polígono':'Dibujar parcela')})).click();document.querySelector('.parcel-modal .world-map-shell').scrollIntoView({block:'center'})})()`)
+  await evaluate(`(()=>{const selector=${JSON.stringify('.parcel-modal .map-tools button')};[...document.querySelectorAll(selector)].find(button=>button.textContent.includes(${JSON.stringify('Dibujar parcela')})).click();document.querySelector('.parcel-modal .world-map-shell').scrollIntoView({block:'center'})})()`)
   await pause(400)
-  const draftPoints=await evaluate(`(()=>{const box=document.querySelector(${JSON.stringify(withoutWebGL?'.parcel-modal .map':'.parcel-modal canvas.maplibregl-canvas')}).getBoundingClientRect();return [[.43,.38],[.65,.38],[.65,.58],[.43,.58]].map(([x,y])=>({x:box.x+box.width*x,y:box.y+box.height*y}))})()`)
-  for(const point of (withoutWebGL?draftPoints:[...draftPoints,draftPoints[0]])){
+  const draftPoints=await evaluate(`(()=>{const box=document.querySelector(${JSON.stringify('.parcel-modal .leaflet-container')}).getBoundingClientRect();return [[.43,.38],[.65,.38],[.65,.58],[.43,.58]].map(([x,y])=>({x:box.x+box.width*x,y:box.y+box.height*y}))})()`)
+  for(const point of [...draftPoints,draftPoints[0]]){
    await send('Input.dispatchMouseEvent',{type:'mouseMoved',...point})
    await pause(80)
    await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1})
@@ -509,7 +570,7 @@ try {
   await waitFor(()=>evaluate(`!document.querySelector('.parcel-modal') && document.querySelector('.parcel-area-summary')?.textContent.includes('50 ha')`),'prepared polygon returns to main workspace')
   assert.equal(creations,beforeDraft,'Preparing a polygon does not create a saved parcel')
   assert(await evaluate(`document.querySelector('.parcel-selector small').textContent.includes('0/3')`),'Draft does not consume a place')
-  await waitFor(()=>evaluate(`!document.querySelector('.analyze-map').disabled`),'draft ready for first analysis')
+  await waitFor(()=>evaluate(`!document.querySelector('.analyze-map').disabled && !!document.querySelector('.map-frame .map-scene-selector option[value="scene-test"]')`),'draft and satellite preview ready for first analysis')
   await evaluate(`document.querySelector('.analyze-map').click()`)
   await waitFor(()=>creations===beforeDraft+1 && analyses===4,'first analysis persists the prepared parcel')
   await waitFor(()=>evaluate(`!!document.querySelector('.steps-flow') && !document.querySelector('.analysis-progress')`),'prepared parcel analysis completed')
@@ -542,8 +603,16 @@ try {
   assert.equal(photoChatPosts,2,'One request per click, including retry')
   assert(await evaluate(`!document.querySelector('.wa-compose .wa-error') && !document.querySelector('.wa-selected')`),'Successful upload clears selected photo and inline error')
  }
+ if(technicalSources&&await evaluate(`!!document.querySelector('.steps-flow')`)){
+  assert(await evaluate(`document.querySelector('.workspace-heading .parcel-station-summary')?.textContent.includes('Estación prueba')&&!document.querySelector('.influences-list')`),'Station attribution is beside the selected parcel, not below the map')
+  assert(await evaluate(`!document.querySelector('.sources-hint')&&![...document.querySelectorAll('summary')].some(s=>s.textContent==='Fuentes de trabajo de los agentes')`),'Producer view hides document sources')
+  await evaluate(`[...document.querySelectorAll('.view-switch button')].find(b=>b.textContent==='Técnico').click()`)
+  await waitFor(()=>evaluate(`!!document.querySelector('.sources-hint')&&[...document.querySelectorAll('summary')].some(s=>s.textContent==='Fuentes de trabajo de los agentes')`),'technical view shows agent and documentary sources')
+  await evaluate(`[...document.querySelectorAll('.view-switch button')].find(b=>b.textContent==='Productor').click()`)
+  await waitFor(()=>evaluate(`!document.querySelector('.sources-hint')`),'producer view hides sources again')
+ }
  assert.equal(authCalls,0,'Anonymous portal never touches CMS auth');assert.equal(exceptions.length,0,exceptions.join('\n'))
  if(process.env.MAP_TEST_SCREENSHOT && await evaluate(`!!document.querySelector('.steps-flow')`)){await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});await evaluate(`document.querySelector('.steps-flow').scrollIntoView()`);await pause(200);const screenshot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(process.env.MAP_TEST_SCREENSHOT,Buffer.from(screenshot.data,'base64'))}
- console.log(JSON.stringify({ok:true,cancelledTileRequests,multiParcel:process.env.MAP_TEST_MULTI_PARCEL==='1',backgroundTilesMocked:process.env.MAP_TEST_MOCK_TILES==='1'&&withoutWebGL,hdInCurrentRenderer:hdTested,labels:true,scrollToggle:true,alertColumns:true,distinctHorizons:true,deleteConfirmation:true,clearedWidgets:true,staleResponseIgnored:true,stagedLoading:true,selectedPeriodOnly:true,noCallsUntilAnalyze:true,sixSteps:true,setupColumns:true,discreetCoverage:true,unifiedMapAndLayers:true,layerOpacity:true,clientLegend:true,reclLayer:true,spectralHistory:true,fourThematicCalls:true,influenceToggle:true,identity:true,viewerTimezone:true,unchangedAnalysisOnZoneChange:true,anonymousAccess:true,noAccountRequests:true,browserWidgetCache:true,groupedMapControls:true,parcelReused:true,quotaFreedByDeletion:true,quotaReconciledAfterAdminDeletion:true,satelliteLoading:true,producerIndexExplanation:true,creationOnlyOnAnalyze:true,soilTension:true,trafficLight:true,qualityWidget:true,specialistsBeforeOrchestrator:true,uncaughtExceptions:0}))
+ console.log(JSON.stringify({ok:true,initialStationFit:true,stationClimateOverlay:true,stationModeValuesAndExit:true,cancelledTileRequests,multiParcel:process.env.MAP_TEST_MULTI_PARCEL==='1',backgroundTilesMocked:process.env.MAP_TEST_MOCK_TILES==='1'&&withoutWebGL,hdInCurrentRenderer:hdTested,labels:true,scrollToggle:true,alertColumns:true,distinctHorizons:true,deleteConfirmation:true,clearedWidgets:true,staleResponseIgnored:true,stagedLoading:true,selectedPeriodOnly:true,noCallsUntilAnalyze:true,sixSteps:true,setupColumns:true,discreetCoverage:true,unifiedMapAndLayers:true,layerOpacity:true,clientLegend:true,reclLayer:true,spectralHistory:true,fourThematicCalls:true,influenceToggle:true,identity:true,viewerTimezone:true,unchangedAnalysisOnZoneChange:true,anonymousAccess:true,noAccountRequests:true,browserWidgetCache:true,groupedMapControls:true,parcelReused:true,quotaFreedByDeletion:true,quotaReconciledAfterAdminDeletion:true,satelliteLoading:true,producerIndexExplanation:true,creationOnlyOnAnalyze:true,soilTension:true,trafficLight:true,qualityWidget:true,specialistsBeforeOrchestrator:true,uncaughtExceptions:0}))
 }catch(error){console.error(error);try{console.error(await evaluate(`({url:location.href,text:document.body.innerText.slice(-4000)})`));console.error(exceptions)}catch{}process.exitCode=1}
 finally{await cleanup()}

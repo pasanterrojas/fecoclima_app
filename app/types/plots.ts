@@ -52,6 +52,9 @@ export interface MapStation {
   active?: boolean
 }
 export interface ParcelAlert {
+  assessment_status?: string
+  conditions_evaluated?: number
+  possible_levels?: string[]
   conditions_met?: number
   conditions_total?: number
   confidence_pct?: number
@@ -138,12 +141,16 @@ export interface ParcelAnalysis {
       { hours: number; stations: StationWindow[]; level: string; usable_coverage_pct?: number; representative_alert?: ParcelAlert }
     >
     phenology: {
+      stage_code?: string | null
       stage_name: string
       description?: string
       days_after_planting: number
       stage_progress_pct?: number
       timeline: { code: string; name: string; estimated_start_date: string; estimated_end_date: string }[]
     }
+    water_balance?: WaterBalance
+    reference_sources?: { document: string; sha256: string }[]
+    documentary_monitoring?: { name: string; status: string; document: string; page_or_section: string; evidence: string; symptoms?: string[]; inspection?: string[] }[]
     satellite: SpectralVisualization & {
       id: string
       source_url?: string
@@ -166,17 +173,7 @@ export interface ParcelAnalysis {
       maps_url: string
       reason?: string
     }
-    forecast: {
-      status: string
-      generated_at?: string
-      days: {
-        date: string
-        temperature_min_c: number | null
-        temperature_max_c: number | null
-        precipitation_mm: number | null
-        humidity_pct: number | null
-      }[]
-    }
+    forecast: ParcelForecast
     historical_regression: {
       station_id: string
       name: string
@@ -196,3 +193,57 @@ export interface ParcelAlertRule {
 }
 
 export interface SoilTension { value: number; unit: string; position_pct: number; band_index: number; label: string; description: string; bands: { min: number; max: number; label: string; description: string; color: string }[] }
+
+export interface WaterBalance {
+  revision: string
+  crop_code?: string
+  current_stage_code?: string | null
+  status: string
+  required_mm_per_day: number | null
+  demand_source: { document: string; page_or_section: string } | null
+  susceptibility: { actual_loss_pct: number | null; loss_probability_pct: number | null; reference_pct: number | null; explanation: string }
+  stations: {
+    station_id: string; name: string; compared_days: number; closed_days: number
+    rain_compared_mm: number | null; required_compared_mm: number | null; rain_minus_requirement_mm: number | null
+    current_stage_gap_mm: number | null; current_stage_compared_days: number; current_stage_closed_days: number
+    stage_totals?: StageWaterTotal[]
+    days: { date: string; stage_code: string | null; closed_day?: boolean; required_mm: number | null; rain_mm: number | null; et_mm: number | null; rain_minus_requirement_mm: number | null }[]
+  }[]
+  limitations: string[]
+}
+
+export interface StageWaterTotal {
+  required_stage_mm?: number | null
+  stage_code: string; stage_name: string; closed_days: number; compared_days: number
+  required_elapsed_mm: number | null; required_compared_mm: number | null
+  rain_compared_mm: number | null; rain_complete_mm: number | null; gap_compared_mm: number | null
+  reference_pct: number | null
+}
+
+export interface PredictionVariable {
+  value: number
+  unit: string
+  station_count?: number
+  method?: string
+  model_value?: number | null
+  station_trend?: number | null
+  station_weight?: number
+  history_days?: number
+}
+export interface PredictionDay {
+  date: string
+  temperature_min_c: number | null
+  temperature_max_c: number | null
+  precipitation_mm: number | null
+  humidity_pct: number | null
+  variables?: Record<string, PredictionVariable>
+}
+export interface ParcelForecast {
+  status: string
+  generated_at?: string
+  provider?: string
+  method_revision?: string
+  days: PredictionDay[]
+  limitations?: string[]
+  stations?: { station_id: string; name: string; model_available: boolean; history_days: number; days: PredictionDay[] }[]
+}

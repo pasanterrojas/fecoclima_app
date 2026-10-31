@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { stationError, stationRadiusPreview, type AdminStation } from '~/utils/stations'
-import type { MapStation } from '~/types/plots'
+import { stationError, type AdminStation } from '~/utils/stations'
 
 const props = defineProps<{ station?: AdminStation }>()
 const emit = defineEmits<{ saved: [station: AdminStation]; cancel: [] }>()
 const { request } = useApi()
+const existingWaterModes = (props.station?.integration_config?.water_aggregation || {}) as Record<string, string>
+const waterModes = reactive({ rain_mm: existingWaterModes.rain_mm || 'daily_counter', evapotranspiration_mm: existingWaterModes.evapotranspiration_mm || 'unconfirmed' })
+const defaultEndpointUrl = 'https://fecoclima.fecoprod.com.py/clima/api/estacion/lectura-guid-por-periodo/{guid}/{year}/{month_from}/{month_to}'
 const form = reactive({
   external_guid: props.station?.external_guid || '',
   name: props.station?.name || '', code: props.station?.code || '',
-  endpoint_url: (props.station?.endpoint_url || props.station?.effective_endpoint_url || '').replace('{guid}', props.station?.external_guid || '{guid}'),
+  endpoint_url: (props.station?.endpoint_url || props.station?.effective_endpoint_url || defaultEndpointUrl).replace('{guid}', props.station?.external_guid || '{guid}'),
   description: props.station?.description || '',
   latitude: props.station?.latitude ?? '' as number | '', longitude: props.station?.longitude ?? '' as number | '',
   altitude_m: props.station?.altitude_m ?? '' as number | '',
@@ -22,6 +24,11 @@ const form = reactive({
   leaf_mode: String(props.station?.leaf_sensor_config?.mode || (props.station?.external_guid?.toUpperCase() === 'C2694D32-5A4B-48C0-A3B6-8345D9E4935B' ? 'threshold' : 'unknown')),
   wet_threshold: Number(props.station?.leaf_sensor_config?.wet_threshold ?? 6),
 })
+watch(() => form.external_guid, (guid, previousGuid) => {
+  // Update only the GUID segment; preserve any URL entered by the administrator.
+  const identifier = form.endpoint_url.includes('/{guid}/') ? '{guid}' : previousGuid.trim()
+  if (identifier) form.endpoint_url = form.endpoint_url.replace(`/${identifier}/`, `/${guid.trim() || '{guid}'}/`)
+})
 const mapsLink = ref('')
 const soilUnitEdited = ref(false)
 watch(() => `${form.endpoint_url} ${form.external_guid}`, value => {
@@ -31,11 +38,6 @@ const saving = ref(false), locating = ref(false), error = ref(''), locationNotic
 let locationRequest = 0
 let coordinateTimer: ReturnType<typeof setTimeout> | undefined
 const coordinatesValid = computed(() => typeof form.latitude === 'number' && Number.isFinite(form.latitude) && Math.abs(form.latitude) <= 90 && typeof form.longitude === 'number' && Number.isFinite(form.longitude) && Math.abs(form.longitude) <= 180)
-const previewStations = computed<MapStation[]>(() => coordinatesValid.value ? [{
-  id: 'preview', name: form.name || 'Nueva estación', latitude: Number(form.latitude), longitude: Number(form.longitude),
-  influence_geojson: stationRadiusPreview(Number(form.latitude), Number(form.longitude), Number(form.influence_radius_m) || 5000), active: form.active,
-  map_color: form.map_color,
-}] : [])
 const mapsUrl = computed(() => coordinatesValid.value ? `https://www.google.com/maps/search/?api=1&query=${form.latitude},${form.longitude}` : 'https://www.google.com/maps')
 
 interface LocationResult { latitude: number; longitude: number; altitude_m: number | null; country: string | null; department: string | null; district: string | null; locality: string | null; warnings: string[]; sources: string[] }
@@ -84,6 +86,7 @@ async function save() {
         import_config: props.station?.import_config || {},
         available_variables: props.station?.available_variables || [],
         integration_config: { ...(props.station?.integration_config || {}), map_color, soil_moisture_unit: soil_unit,
+          water_aggregation: { ...existingWaterModes, ...waterModes },
           soil_tension_proxy_enabled: false, soil_tension_rule_validated: false },
         leaf_sensor_config: { ...(props.station?.leaf_sensor_config || {}), mode: leaf_mode, ...(leaf_mode === 'threshold' ? { wet_threshold: Number(wet_threshold) } : {}) }, external_guid: form.external_guid.trim() || null, code: form.code.trim() || null, description: form.description.trim() || null,
         altitude_m: form.altitude_m === '' ? null : form.altitude_m,
@@ -104,15 +107,16 @@ onBeforeUnmount(() => { locationRequest++; if (coordinateTimer) clearTimeout(coo
       <div class="form-grid">
         <label><span class="label">Nombre *</span><input v-model.trim="form.name" class="input" required minlength="2" maxlength="180" placeholder="Ej. Raúl Peña" /></label>
 
-        <label class="full"><span class="label">URL de API *</span><input v-model.trim="form.endpoint_url" class="input" type="url" required placeholder="https://fecoclima.fecoprod.com.py/clima/api/estacion/lectura-guid-por-periodo/GUID/2026/1/6" /><small>Pegue la URL de esta estación con su GUID real. El año y los meses se ajustan automáticamente en cada consulta.</small></label>
-        <details class="full"><summary>Código e identificador externo</summary><p class="form-help">La URL completa permite obtener el GUID automáticamente. Complete estos campos solo si necesita un identificador específico.</p>        <label><span class="label">Código (opcional)</span><input v-model.trim="form.code" class="input" maxlength="80" placeholder="Se genera al guardar si lo deja vacío" /><small>Use su código existente o deje que el sistema asigne uno.</small></label>        <label class="full"><span class="label">GUID de la estación (si la URL no lo incluye)</span><input v-model.trim="form.external_guid" class="input" placeholder="Identificador proporcionado por FECOPROD" /><small>Se extrae automáticamente de una URL completa. Si pega solo la URL base, debe ingresar el GUID real; el código interno no lo reemplaza.</small></label></details>
+        <label class="full"><span class="label">GUID de la estación</span><input v-model.trim="form.external_guid" class="input" :required="form.endpoint_url.includes('{guid}')" placeholder="Identificador proporcionado por FECOPROD" /><small>Pegue el GUID recibido del proveedor para completar la URL. Si pega una URL completa con su GUID, puede dejar este campo vacío.</small></label>
+        <label class="full"><span class="label">URL de API *</span><input v-model.trim="form.endpoint_url" class="input" type="url" required :placeholder="defaultEndpointUrl" /><small>URL de FECOPROD prellenada y editable. El GUID se completa desde el campo anterior; el año y los meses se ajustan automáticamente en cada consulta.</small></label>
+        <details class="full"><summary>Código interno (opcional)</summary><label><span class="label">Código</span><input v-model.trim="form.code" class="input" maxlength="80" placeholder="Se genera al guardar si lo deja vacío" /><small>Use su código existente o deje que el sistema asigne uno.</small></label></details>
         <label class="full"><span class="label">Descripción</span><textarea v-model="form.description" class="textarea" rows="3" /></label>
       </div>
       <section class="station-location">
         <div class="row-between"><h3>Ubicación de la estación</h3><a :href="mapsUrl" target="_blank" rel="noopener" class="btn btn-light">Abrir Google Maps ↗</a></div>
         <p>Ubique el punto en Maps y pegue su enlace. También puede hacer clic directamente en el mapa inferior.</p>
         <div class="location-import"><input v-model.trim="mapsLink" class="input" aria-label="URL de Google Maps o coordenadas" placeholder="URL de Google Maps o latitud, longitud" /><button type="button" class="btn btn-primary" :disabled="!mapsLink || locating" @click="locate(mapsLink)">{{ locating ? 'Consultando…' : 'Obtener ubicación' }}</button></div>
-        <ClientOnly><StationPolygonEditor point-mode :model-value="null" :latitude="form.latitude" :longitude="form.longitude" :stations="previewStations" :initial-zoom="6" @update:latitude="pointChanged('latitude', $event)" @update:longitude="pointChanged('longitude', $event)" /></ClientOnly>
+        <ClientOnly><LeafletParcelEditor point-mode :model-value="null" :latitude="form.latitude" :longitude="form.longitude" :radius="form.influence_radius_m" :polygon-color="form.map_color" :initial-zoom="6" @update:latitude="pointChanged('latitude', $event)" @update:longitude="pointChanged('longitude', $event)" /></ClientOnly>
         <p v-if="locating" role="status">Completando dirección y altitud…</p>
         <p v-if="locationNotice" class="notice notice-warning" role="status">{{ locationNotice }}</p>
         <div class="form-grid location-fields">
@@ -134,6 +138,16 @@ onBeforeUnmount(() => { locationRequest++; if (coordinateTimer) clearTimeout(coo
         <h3>Configuración de lecturas y sensores <InfoHint text="Estos parámetros afectan directamente las alertas por datos incompletos. Configure lo que realmente entrega el equipo, sin convertir centibares a porcentaje." /></h3>
         <div class="form-grid">
           <label><span class="label">Cada cuántos minutos transmite la estación</span><input v-model.number="form.expected_interval_minutes" type="number" min="1" max="1440" step="1" class="input" required /><small>Indique el intervalo real de la API. El sistema lo utiliza para calcular cuántas muestras debería recibir.</small></label>
+          <label v-for="field in (['rain_mm', 'evapotranspiration_mm'] as const)" :key="field">
+            <span class="label">{{ field === 'rain_mm' ? 'Cómo entrega la lluvia' : 'Cómo entrega la evapotranspiración (ET)' }}</span>
+            <select v-model="waterModes[field]" class="select">
+              <option value="unconfirmed">Sin confirmar / sensor no disponible</option>
+              <option value="interval_sum">Cantidad de cada intervalo (se suma)</option>
+              <option value="daily_counter">Contador acumulado del día (se toma el máximo)</option>
+            </select>
+            <small v-if="waterModes[field] === 'interval_sum'">Cantidad desde la lectura anterior; se suman las lecturas.</small>
+            <small v-else-if="waterModes[field] === 'daily_counter'">Total desde el inicio del día; se toma el mayor valor, sin sumarlos.</small>
+          </label>
           <label><span class="label">Unidad del sensor de suelo</span><select v-model="form.soil_unit" class="select" @change="soilUnitEdited = true"><option value="%">Porcentaje de humedad (%)</option><option value="cb">Tensión del suelo (cb)</option></select><small>No son equivalentes. En Cultivos → Reglas elija “Tensión del agua en el suelo (cb)” y un umbral validado para el suelo, sensor y cultivo.</small></label>
           <label><span class="label">Interpretación del sensor de mojado foliar</span><select v-model="form.leaf_mode" class="select"><option value="unknown">No configurado / no disponible</option><option value="threshold">Escala con umbral de mojado</option><option value="binary_wet">Sensor binario (mojado/seco)</option><option value="hours">Reporta horas mojadas</option></select><small>Seleccione la semántica real del sensor; un valor 0 puede significar seco, no ausente.</small></label>
           <label v-if="form.leaf_mode === 'threshold'"><span class="label">Umbral a partir del cual se considera mojado</span><input v-model.number="form.wet_threshold" type="number" min="0" max="1000" step="any" class="input" required /><small>Solo use un umbral documentado para esta estación (p. ej., 6 cuando corresponda).</small></label>

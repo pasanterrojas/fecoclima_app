@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { weatherStationIconUrl } from '~/utils/stations'
+import { openSatelliteBasemap as basemap } from '~/utils/mapBasemaps'
 import { Crosshair, Image, Layers3, Maximize2, ZoomIn, ZoomOut } from 'lucide-vue-next'
 
 type Coordinate = [number, number]
@@ -21,6 +22,7 @@ const props = withDefaults(defineProps<{
 const mapRef = ref<HTMLElement | null>(null)
 const width = ref(900)
 const height = ref(560)
+const maxZoom = 19
 const zoom = ref(14)
 const center = ref<Coordinate>([-57.6359, -25.3007])
 const opacity = ref(props.defaultOpacity)
@@ -79,21 +81,25 @@ function worldToLonLat(x: number, y: number, level = zoom.value): Coordinate {
 const centerWorld = computed(() => lonLatToWorld(center.value))
 const topLeft = computed(() => ({ x: centerWorld.value.x - width.value / 2, y: centerWorld.value.y - height.value / 2 }))
 const tiles = computed(() => {
-  const startX = Math.floor(topLeft.value.x / 256)
-  const startY = Math.floor(topLeft.value.y / 256)
-  const endX = Math.floor((topLeft.value.x + width.value) / 256)
-  const endY = Math.floor((topLeft.value.y + height.value) / 256)
-  const count = 2 ** zoom.value
-  const rows: Array<{ key: string; url: string; left: number; top: number }> = []
+  const nativeZoom = Math.min(zoom.value, basemap.maxZoom)
+  const scale = 2 ** (zoom.value - nativeZoom)
+  const left = topLeft.value.x / scale, top = topLeft.value.y / scale
+  const startX = Math.floor(left / 256)
+  const startY = Math.floor(top / 256)
+  const endX = Math.floor((left + width.value / scale) / 256)
+  const endY = Math.floor((top + height.value / scale) / 256)
+  const count = 2 ** nativeZoom
+  const rows: Array<{ key: string; url: string; left: number; top: number; size: number }> = []
   for (let y = startY; y <= endY; y += 1) {
     if (y < 0 || y >= count) continue
     for (let x = startX; x <= endX; x += 1) {
       const wrappedX = ((x % count) + count) % count
       rows.push({
-        key: `${zoom.value}-${x}-${y}`,
-        url: `https://tile.openstreetmap.org/${zoom.value}/${wrappedX}/${y}.png`,
-        left: x * 256 - topLeft.value.x,
-        top: y * 256 - topLeft.value.y,
+        key: `${nativeZoom}-${x}-${y}`,
+        url: basemap.tiles.replace('{z}', String(nativeZoom)).replace('{x}', String(wrappedX)).replace('{y}', String(y)),
+        left: (x * 256 - left) * scale,
+        top: (y * 256 - top) * scale,
+        size: 256 * scale,
       })
     }
   }
@@ -132,7 +138,7 @@ function fitGeometry() {
     if (props.latitude != null && props.longitude != null) center.value = [Number(props.longitude), Number(props.latitude)]
     return
   }
-  for (let candidate = 19; candidate >= 3; candidate -= 1) {
+  for (let candidate = maxZoom; candidate >= 3; candidate -= 1) {
     const world = points.map(item => lonLatToWorld(item, candidate))
     const minX = Math.min(...world.map(item => item.x))
     const maxX = Math.max(...world.map(item => item.x))
@@ -153,7 +159,7 @@ function centerStation() {
 }
 
 function changeZoom(delta: number) {
-  zoom.value = Math.max(3, Math.min(19, zoom.value + delta))
+  zoom.value = Math.max(3, Math.min(maxZoom, zoom.value + delta))
 }
 
 function onPointerDown(event: PointerEvent) {
@@ -220,7 +226,7 @@ onBeforeUnmount(() => {
       @pointercancel="onPointerUp"
       @wheel.prevent="changeZoom($event.deltaY < 0 ? 1 : -1)"
     >
-      <img v-for="tile in tiles" :key="tile.key" class="tile" :src="tile.url" alt="" draggable="false" :style="{ left: `${tile.left}px`, top: `${tile.top}px` }">
+      <img v-for="tile in tiles" :key="tile.key" class="tile" :src="tile.url" alt="" draggable="false" :style="{ left: `${tile.left}px`, top: `${tile.top}px`, width: `${tile.size}px`, height: `${tile.size}px` }">
       <img
         v-if="imageUrl && showImage && imageRect"
         class="sat-overlay"
@@ -253,7 +259,7 @@ onBeforeUnmount(() => {
         <button type="button" title="Ver todo el polígono" @click.stop="fitGeometry"><Maximize2 /></button>
       </div>
       <div v-if="!imageUrl" class="image-message"><Image /><span>Seleccione y procese una escena para colocarla sobre el polígono.</span></div>
-      <a class="osm-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" @pointerdown.stop>© OpenStreetMap</a>
+      <a class="osm-credit" :href="basemap.creditUrl" target="_blank" rel="noopener" @pointerdown.stop>{{ basemap.credit }}</a>
     </div>
   </div>
 </template>

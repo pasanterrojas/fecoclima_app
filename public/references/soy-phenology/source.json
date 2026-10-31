@@ -1,0 +1,27 @@
+{
+  "document": "Soja fenologia y Clima para agrobuch.xlsx",
+  "sha256": "517cc4fb5a3a83031cee0564e96ad482f515e6636ac075e89a3a193dd7c74b4a",
+  "images": [
+    {
+      "file": "stage-reference-6.png",
+      "source": "xl/media/image6.png"
+    },
+    {
+      "file": "stage-reference-7.png",
+      "source": "xl/media/image7.png"
+    },
+    {
+      "file": "stage-reference-8.png",
+      "source": "xl/media/image8.png"
+    },
+    {
+      "file": "stage-reference-10.png",
+      "source": "xl/media/image10.png"
+    },
+    {
+      "file": "stage-reference-11.png",
+      "source": "xl/media/image11.png"
+    }
+  ],
+  "note": "Ilustraciones de referencia incluidas en el libro del cliente. Se conservan los originales; el componente encuadra únicamente la planta mediante SVG. No son fotografías de la parcela."
+}

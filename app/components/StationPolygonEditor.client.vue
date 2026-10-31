@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { stationMapCoordinates, stationDisplayColor, weatherStationIconUrl } from '~/utils/stations'
-import { streetBasemap, type RasterBasemap } from '~/utils/mapBasemaps'
+import { openSatelliteBasemap, navigationOverlay, type RasterBasemap } from '~/utils/mapBasemaps'
 import {
   CircleDot,
   Crosshair,
@@ -70,7 +70,8 @@ const props = withDefaults(defineProps<{
   showInfluence: true,
   overlayUrl: null,
   overlayOpacity: 0.78,
-  basemap: () => streetBasemap,
+  basemap: () => openSatelliteBasemap,
+  labelsBasemap: () => navigationOverlay,
   pointMode: false,
   readOnly: false,
 })

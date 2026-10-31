@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { SpectralLegend, SpectralVisualization } from '~/types/plots'
 import { spectralDescriptions } from '~/utils/spectralDescriptions'
-const props = defineProps<{legend:SpectralLegend; indexName:string; grid?:SpectralVisualization['visual_grid']}>()
+const props = defineProps<{legend:SpectralLegend; indexName:string; grid?:SpectralVisualization['visual_grid']; technical?:boolean}>()
 const explanation = computed(() => spectralDescriptions[props.indexName.toLowerCase()] || 'Compare los colores para encontrar diferencias entre sectores de su parcela y revisarlas en campo.')
 </script>
 <template>
   <section class="spectral-legend" :aria-label="`Escala de ${indexName.toUpperCase()}`">
     <div class="legend-heading"><b>{{indexName.toUpperCase()}} · Escala fija</b><span>Cinco categorías · misma escala entre fechas</span></div>
     <ol><li v-for="item in legend.classes" :key="item.label"><i :style="{backgroundColor:item.color}" /><span>{{item.label}}</span></li></ol>
-    <p v-if="legend.formula">{{legend.formula}} <a v-if="legend.formula_source" :href="legend.formula_source" target="_blank" rel="noopener noreferrer">Referencia</a></p>
+    <p v-if="technical && legend.formula">{{legend.formula}} <a v-if="legend.formula_source" :href="legend.formula_source" target="_blank" rel="noopener noreferrer">Referencia</a></p>
     <p class="index-explanation">{{ explanation }}</p>
-    <small v-if="grid">Salida remuestreada ≈ {{grid.output_resolution_m}} m · bandas nativas de {{grid.native_resolution_m.join('–')}} m. El remuestreo no agrega detalle al sensor.</small>
+    <small v-if="technical && grid">Salida remuestreada ≈ {{grid.output_resolution_m}} m · bandas nativas de {{grid.native_resolution_m.join('–')}} m. El remuestreo no agrega detalle al sensor.</small>
   </section>
 </template>
 <style scoped>

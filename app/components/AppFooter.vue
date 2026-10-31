@@ -12,7 +12,7 @@ const { zoneLabel } = useViewerTime()
             </div>
             <p class="footer-time-zone">{{ zoneLabel }} <InfoHint text="Las horas se convierten a la zona de su dispositivo. La lectura original, su antigüedad y las ventanas de análisis no cambian. La fecha de siembra y los días de pronóstico conservan su fecha de calendario." /></p>
             <div class="developer-credit">
-                Desarrollado con 💻 y ☕ por Reymond E. Rojas Núñez || IICA PDTAF
+                Desarrollado con 💻 y ☕ por Reymond E. Rojas Núñez || Cooperación Técnica del IICA
             </div>
         </div>
     </footer>

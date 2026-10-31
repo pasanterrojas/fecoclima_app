@@ -395,7 +395,7 @@ watch(() => [props.detailId, props.endpoint], () => { notice.value = ''; void lo
             <div v-if="field.section && (fieldIndex === 0 || field.section !== group.fields[fieldIndex - 1]?.section)" class="field-section-heading"><h3>{{ field.section }}</h3></div>
             <div :class="{ 'full-field': ['textarea', 'geojson-map', 'checkbox-group'].includes(field.type || '') }">
               <label class="label" :for="`field-${field.key}`">{{ field.label }}<span v-if="field.required" aria-hidden="true"> *</span></label>
-              <StationPolygonEditor
+              <LeafletParcelEditor
                 v-if="field.type === 'geojson-map'"
                 v-model="form[field.key]"
                 v-model:latitude="form.latitude"

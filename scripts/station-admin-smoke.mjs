@@ -46,7 +46,7 @@ async function startChrome() {
   assert(binary, 'Chrome not found. Set CHROME_BIN or CDP_BASE_URL.')
   profile = await mkdtemp(join(tmpdir(), 'fecoclima-map-smoke-'))
   const args = [
-    '--headless=new', '--no-first-run', '--no-default-browser-check',
+    '--headless=new', '--ignore-certificate-errors', '--no-first-run', '--no-default-browser-check',
     '--disable-dev-shm-usage', '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding', '--use-gl=angle', '--use-angle=swiftshader',
     '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
@@ -96,7 +96,10 @@ async function cleanup() {
 }
 
 const stations = []
+const stationGuid = 'C2694D32-5A4B-48C0-A3B6-8345D9E4935B'
+const defaultEndpoint = 'https://fecoclima.fecoprod.com.py/clima/api/estacion/lectura-guid-por-periodo/{guid}/{year}/{month_from}/{month_to}'
 let captured
+let reportGenerated = false
 const csrfToken = 'station-smoke-csrf'
 let csrfChecks = 0
 async function intercept(params) {
@@ -109,12 +112,16 @@ async function intercept(params) {
   }
   if (path === '/auth/login' || path === '/auth/me') payload = {id:'admin', email:'test@example.com', name:'Prueba', role:'superadmin'}
   else if (path === '/auth/session') payload = {user:{id:'admin',name:'Prueba',email:'test@example.com',role:'superadmin'},refresh_available:false}
+  else if (path === '/forecasts/verification') payload={items:[{id:'prediction-test',station_id:'station-test',station_name:'Estación de prueba',target_date:'2026-10-30',issued_at:'2026-10-29T20:00:00Z',verified_at:'2026-10-31T09:00:00Z',predicted:{date:'2026-10-30',variables:{precipitation_mm:{value:12,unit:'mm',method:'combined',history_days:7}}},observed:{precipitation_mm:9},observation_coverage:{precipitation_mm:1}}],total:1,schedule:{hour:6,minute:0,timezone:'America/Asuncion'}}
   else if (path === '/stations/location/resolve') payload = {latitude:-26.1585,longitude:-55.2722,altitude_m:320,country:'Paraguay',department:'Alto Paraná',district:'Raúl Peña',locality:'Centro',warnings:[],sources:[]}
   else if (path === '/stations' && params.request.method === 'POST') {captured = JSON.parse(params.request.postData);payload={...captured,id:'station-test',code:'EST-TEST'};stations.push(payload)}
   else if (path === '/stations') payload = {items:stations,limit:250,offset:0}
   else if (path === '/stations/station-test') payload = stations[0]
   else if (path === '/admin/ai-runs') payload={completed_24h:0,fallback_24h:0,items:[]}
   else if (path === '/admin/jobs') payload=[]
+  else if (path === '/admin/consultation-reports') payload={total:1,items:[{analysis_id:'analysis-fixture',name:'Estación y parcela de prueba',producer_name:'Productor',reference_at:'2026-10-30T12:00:00Z',crop_name:'Soja',stage_name:'V9',window_hours:72,water_available:true,report:reportGenerated?{id:'report-fixture',status:'COMPLETED',file_available:true}:null}]}
+  else if (path === '/admin/consultation-reports/sources') payload={revision:'fixture',items:[{document:'Alerta Soja x dia.xlsx',sha256:'fixture',sections:50}]}
+  else if (path === '/admin/consultation-reports/analysis-fixture' && params.request.method === 'POST') {reportGenerated=true;payload={id:'report-fixture',status:'PENDING',file_available:false}}
   await send('Fetch.fulfillRequest',{requestId:params.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:new URL(appUrl).origin},{name:'Access-Control-Allow-Credentials',value:'true'},{name:'Access-Control-Allow-Methods',value:'GET,POST,PUT,DELETE,OPTIONS'},{name:'Access-Control-Allow-Headers',value:'Content-Type,X-CSRF-Token'}],body:Buffer.from(JSON.stringify(payload)).toString('base64')})
 }
 try {
@@ -135,11 +142,22 @@ try {
   await waitFor(()=>evaluate(`!!document.querySelector('input[type=email]') && !!document.querySelector('#__nuxt')?.__vue_app__`),'hydrated login')
   await evaluate(`(()=>{const e=document.querySelector('input[type=email]'),p=document.querySelector('input[type=password]');e.value='test@example.com';e.dispatchEvent(new Event('input',{bubbles:true}));p.value='test-only';p.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('form').requestSubmit()})()`)
   await waitFor(()=>evaluate(`!!document.querySelector('.station-overview .world-map-shell')`),'dashboard station map')
+  assert(await evaluate(`document.querySelector('.station-overview [aria-label="Tipo de mapa"] button.active')?.textContent.trim()==='Satélite'`),'Admin starts with the satellite basemap')
   await evaluate(`document.querySelector('.station-overview a').click()`)
   await waitFor(()=>evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent==='Nueva estación')`),'station list')
   await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent==='Nueva estación').click()`)
-  await waitFor(()=>evaluate(`!!document.querySelector('.station-form .map-tile')`),'station point editor')
-  await evaluate(`(()=>{const form=document.querySelector('.station-form');const set=(selector,value)=>{const e=form.querySelector(selector);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}))};set('input[placeholder="Ej. Raúl Peña"]','Estación de prueba');set('input[type=url]','https://fecoclima.fecoprod.com.py/clima/api/estacion/lectura-guid-por-periodo/C2694D32-5A4B-48C0-A3B6-8345D9E4935B/2026/1/6');set('input[aria-label="URL de Google Maps o coordenadas"]','https://www.google.com/maps/@-26.1585,-55.2722,400m')})()`)
+  await waitFor(()=>evaluate(`!!document.querySelector('.station-form .leaflet-tile')`),'station point editor')
+  assert.equal(await evaluate(`document.querySelector('.station-form input[type=url]').value`),defaultEndpoint,'New station starts with the editable FECOPROD URL')
+  assert(await evaluate(`(()=>{const input=document.querySelector('.station-form input[placeholder="Identificador proporcionado por FECOPROD"]');return input.required && !input.closest('details')})()`),'GUID is visible and required for the default template')
+  assert(await evaluate(`document.querySelector('.station-form .leaflet-tile').src.includes('/s2cloudless_3857/')`),'Station editor starts with the satellite basemap')
+  await evaluate(`(()=>{const input=document.querySelector('.station-form input[placeholder="Identificador proporcionado por FECOPROD"]');input.value='11111111-1111-4111-8111-111111111111';input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+  await waitFor(()=>evaluate(`document.querySelector('.station-form input[type=url]').value.includes('/11111111-1111-4111-8111-111111111111/')`),'GUID completes the default URL')
+  await evaluate(`(()=>{const input=document.querySelector('.station-form input[placeholder="Identificador proporcionado por FECOPROD"]');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+  await waitFor(()=>evaluate(`document.querySelector('.station-form input[type=url]').value===${JSON.stringify(defaultEndpoint)}`),'Clearing the GUID restores the placeholder')
+  await evaluate(`(()=>{const input=document.querySelector('.station-form input[type=url]');input.value=${JSON.stringify(defaultEndpoint.replace('fecoclima.fecoprod.com.py','estaciones.example.com'))};input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+  await evaluate(`(()=>{const form=document.querySelector('.station-form');const set=(selector,value)=>{const e=form.querySelector(selector);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}))};set('input[placeholder="Ej. Raúl Peña"]','Estación de prueba');set('input[placeholder="Identificador proporcionado por FECOPROD"]',${JSON.stringify(stationGuid)});set('input[aria-label="URL de Google Maps o coordenadas"]','https://www.google.com/maps/@-26.1585,-55.2722,400m')})()`)
+  await waitFor(()=>evaluate(`document.querySelector('.station-form input[type=url]').value===${JSON.stringify(defaultEndpoint.replace('fecoclima.fecoprod.com.py','estaciones.example.com').replace('{guid}',stationGuid))}`),'Custom provider URL is preserved when entering the GUID')
+  await evaluate(`(()=>{const input=document.querySelector('.station-form input[type=url]');input.value=${JSON.stringify(defaultEndpoint.replace('{guid}',stationGuid))};input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
   await pause(100)
   await evaluate(`[...document.querySelectorAll('.station-form button')].find(b=>b.textContent.includes('Obtener ubicación')).click()`)
   await waitFor(()=>evaluate(`document.querySelector('.station-form').textContent.includes('Ubicación y altitud completadas')`),'location response')
@@ -148,17 +166,30 @@ try {
   await evaluate(`(()=>{const color=document.querySelector('.station-form input[type=color]');color.value='#9b5de5';color.dispatchEvent(new Event('input',{bubbles:true}))})()`)
   await evaluate(`document.querySelector('.station-form').requestSubmit()`)
   await waitFor(()=>captured,'station save')
+  assert.equal(captured.external_guid,stationGuid)
+  assert.equal(captured.endpoint_url,defaultEndpoint.replace('{guid}',stationGuid),'Only the GUID was needed to complete the API URL')
   assert.equal(captured.integration_config.map_color,'#9b5de5')
   assert.equal(captured.integration_config.soil_moisture_unit,'cb','Known Raúl Peña defaults to documented cb unless explicitly edited')
   assert(csrfChecks >= 2, 'Location lookup and station save must carry CSRF')
   assert.equal(captured.code,null);assert.equal(captured.latitude,-26.1585);assert.equal(captured.influence_radius_m,5000);assert.equal(captured.active,true);assert.equal(captured.source_type,'FECOCLIMA_API')
   await waitFor(()=>evaluate(`location.pathname.endsWith('/estaciones/station-test') && document.querySelector('.station-form')`),'saved station detail')
+  assert.equal(await evaluate(`document.querySelector('.station-form input[type=url]').value`),captured.endpoint_url,'Editing preserves the saved station URL')
   await evaluate(`document.querySelector('.back-link').click()`)
   await waitFor(()=>evaluate(`!document.querySelector('.station-form') && document.querySelector('table').textContent.includes('Estación de prueba')`),'saved station list')
   await evaluate(`[...document.querySelectorAll('aside a')].find(a=>a.textContent.includes('Dashboard')).click()`)
   await waitFor(()=>evaluate(`document.querySelector('.station-overview')?.textContent.includes('1 estaciones')`),'dashboard refresh')
-  await waitFor(()=>evaluate(`(() => {const shell=document.querySelector('.station-overview .world-map-shell');return shell && !shell.querySelector('.map-loading') && !!shell.querySelector('canvas.maplibregl-canvas,.map-tile')})()`),'dashboard map rendering',45000)
+  await waitFor(()=>evaluate(`(() => {const shell=document.querySelector('.station-overview .world-map-shell');return shell && !shell.querySelector('.map-loading') && !!shell.querySelector('.leaflet-container .leaflet-tile-pane')})()`),'dashboard map rendering',45000)
+  await evaluate(`[...document.querySelectorAll('aside a')].find(a=>a.textContent.includes('Reportes')).click()`)
+  await waitFor(()=>evaluate(`document.querySelector('table')?.textContent.includes('Estación y parcela de prueba')`),'saved analyses available in admin reports')
+  assert(await evaluate(`document.body.textContent.includes('Incluye módulo de agua') && document.body.textContent.includes('Alerta Soja x dia.xlsx')`),'Report list exposes water availability and reviewed sources')
+  await evaluate(`[...document.querySelectorAll('table button')].find(b=>b.textContent.trim()==='Generar informe').click()`)
+  await waitFor(()=>reportGenerated,'report request with CSRF')
+  await waitFor(()=>evaluate(`document.querySelector('a[href*="/admin/consultation-reports/files/report-fixture"]')?.textContent==='Descargar PDF'`),'completed report download')
+  await evaluate(`[...document.querySelectorAll('aside a')].find(a=>a.textContent.includes('Auditoría')).click()`)
+  await waitFor(()=>evaluate(`document.querySelector('.prediction-audit table')?.textContent.includes('Estación de prueba')`),'forecast verification in admin audit')
+  assert(await evaluate(`document.querySelector('.prediction-audit table').textContent.includes('Valor predicho')&&document.querySelector('.prediction-audit table').textContent.includes('Valor obtenido')`),'Forecast audit keeps predicted and observed columns')
+  assert(await evaluate(`document.querySelector('.prediction-audit table').textContent.includes('12 mm')&&document.querySelector('.prediction-audit table').textContent.includes('9 mm')`),'Predictions and measured values displayed separately')
   assert.equal(exceptions.length,0,exceptions.join('\n'))
-  console.log(JSON.stringify({ok:true,loginMocked:true,stationForm:true,mapsImport:true,optionalCode:true,save:true,dashboard:true,uncaughtExceptions:0}))
+  console.log(JSON.stringify({ok:true,loginMocked:true,stationForm:true,mapsImport:true,optionalCode:true,save:true,dashboard:true,consultationReports:true,uncaughtExceptions:0}))
 } catch(error){console.error(error);try{console.error(await evaluate(`({url:location.href,text:document.body.innerText.slice(0,2500),vue:!!document.querySelector('#__nuxt')?.__vue_app__,nuxt:!!window.$nuxt,scripts:[...document.scripts].map(s=>s.src)})`));console.error(exceptions)}catch{}process.exitCode=1}
 finally{await cleanup()}

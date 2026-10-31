@@ -329,10 +329,11 @@ const levelLabels: Record<string, string> = {
   NINGUNA: 'Normal',
   MODERADA: 'Moderada',
   GRAVE: 'Grave',
+  EVALUACION_PARCIAL: 'Señales disponibles · evaluación parcial',
   DATOS_INSUFICIENTES: 'Sin clasificación: faltan datos'
 }
 const tone = computed(
-  () => ({ GRAVE: 'severe', MODERADA: 'moderate', NINGUNA: 'good' })[window.value?.level || ''] || 'unknown'
+  () => ({ GRAVE: 'severe', MODERADA: 'moderate', EVALUACION_PARCIAL: 'moderate', NINGUNA: 'good' })[window.value?.level || ''] || 'unknown'
 )
 const reportedConditions = computed(() => (window.value?.stations || []).flatMap(station =>
   (station.alert.conditions || []).map(condition => ({
@@ -346,12 +347,14 @@ const missingConditions = computed(() => reportedConditions.value.filter(row => 
 const evaluatedConditions = computed(() => reportedConditions.value.filter(row => row.status === 'not_met'))
 const severityExplanation = computed(() => {
   if (!window.value) return 'Analice la parcela para consultar sus condiciones.'
+  if (window.value.level === 'EVALUACION_PARCIAL') return window.value.representative_alert?.simple_explanation || 'Se utilizan las señales que la estación sí reporta. Las condiciones sin medir podrían cambiar el nivel de riesgo; revise el cultivo en campo.'
   if (window.value.level === 'DATOS_INSUFICIENTES') return 'Hay señales observadas, pero faltan datos indispensables para decidir si el riesgo es normal, moderado o grave. El sistema no debe suponer que las condiciones sin medir son seguras.'
   if (window.value.level === 'NINGUNA') return 'Las condiciones evaluadas no alcanzan el umbral de alerta configurado. Continúe con el seguimiento.'
   if (window.value.level === 'MODERADA') return 'Varias condiciones de riesgo se cumplieron. Revise las zonas vulnerables del cultivo y continúe vigilando el pronóstico.'
   return 'Se cumplieron suficientes condiciones para requerir revisión prioritaria. Verifique el cultivo en campo; la alerta no confirma una enfermedad.'
 })
 const prioritizedInfluence = computed(() => context.value?.station_influences?.[0] || null)
+const headerStations = computed(() => coveragePreview.value?.station_influences || (currentSnapshot.value && JSON.stringify(mapGeometry.value) === JSON.stringify(context.value?.plot.geojson) ? context.value?.station_influences || [] : []))
 const orderedReadings = computed(() => {
   const influences = context.value?.station_influences || []
   return [...(context.value?.raw_readings || [])].sort((a, b) =>
@@ -559,7 +562,7 @@ function previewCoverage(geometry: Geometry | null) {
   }, 350)
 }
 async function fillWidgets(snapshot: ParcelAnalysis) {
-  const purposes = ['RAG_CROP', 'WEATHER_ANALYSIS', 'SATELLITE_ANALYSIS']
+  const purposes = ['RAG_CROP', 'WEATHER_ANALYSIS', 'SATELLITE_ANALYSIS', 'PHENOLOGY_ANALYSIS']
   const selectedHours = analysisHours.value
   agentsRunning.value = true
   analysisStage.value = 2
@@ -567,7 +570,7 @@ async function fillWidgets(snapshot: ParcelAnalysis) {
   const settled: PromiseSettledResult<string>[] = []
   for (const purpose of purposes) {
     if (analysis.value?.id !== snapshot.id || analysisHours.value !== selectedHours) break
-    analysisDetail.value = ({ RAG_CROP: 'Consultando los documentos y riesgos del cultivo.', WEATHER_ANALYSIS: 'Revisando el clima observado y el pronóstico de los próximos tres días.', SATELLITE_ANALYSIS: 'Interpretando las imágenes y los índices disponibles del polígono.' } as Record<string, string>)[purpose] || ''
+    analysisDetail.value = ({ RAG_CROP: 'Consultando los documentos y riesgos del cultivo.', WEATHER_ANALYSIS: 'Revisando el clima observado y el pronóstico de los próximos tres días.', PHENOLOGY_ANALYSIS: 'Evaluando la lluvia requerida y registrada para esta etapa.', SATELLITE_ANALYSIS: 'Interpretando las imágenes y los índices disponibles del polígono.' } as Record<string, string>)[purpose] || ''
     try {
       const result = await request<Interpretation>(`/parcels/analyses/${snapshot.id}/interpret`, { method: 'POST', body: { purpose, view_mode: technical.value ? 'technical' : 'producer', window_hours: selectedHours } })
       if (analysis.value?.id === snapshot.id && analysisHours.value === selectedHours) analysis.value.agent_results[purpose] = result
@@ -987,12 +990,14 @@ onBeforeUnmount(() => {
       <div class="workspace-top-controls">
         <div class="parcel-controls">
           <label class="parcel-selector"><span class="label">Mis parcelas <small>{{sessionCount}}/3 en esta sesión</small></span><select v-model="selection.plotId" class="select" :disabled="!!busy || agentsRunning" aria-label="Seleccionar parcela"><option value="">Seleccione una parcela</option><option v-for="parcel in parcels" :key="parcel.id" :value="parcel.id">{{parcel.name}}</option></select></label>
-          <NuxtLink v-if="selected" class="btn btn-light parcel-alerts-button" :to="`/fecoclima-ia/suscripciones?parcela=${selected.id}`" title="Recibir alertas para esta parcela"><Bell aria-hidden="true" /><span>Recibir alertas</span></NuxtLink>
-          <label class="parcel-color-control"><span class="sr-only">Color de la parcela seleccionada</span><input v-model="mapParcelColor" type="color" :disabled="!!busy || agentsRunning" aria-label="Color de la parcela seleccionada" title="Color de la parcela" @change="saveParcelColor" /></label>
-          <button type="button" class="btn btn-light new-parcel-button" :disabled="loading || !!busy || agentsRunning || sessionCount>=3" @click="openForm()"><Plus/> Nueva parcela</button>
+           <label class="parcel-color-control"><span class="sr-only">Color de la parcela seleccionada</span><input v-model="mapParcelColor" type="color" :disabled="!!busy || agentsRunning" aria-label="Color de la parcela seleccionada" title="Color de la parcela" @change="saveParcelColor" /></label>
+          <button type="button" class="btn btn-light new-parcel-button" :disabled="loading || !!busy || agentsRunning || sessionCount>=3" @click="openForm()"><Plus/> Nueva</button>
           <button v-if="selected" type="button" class="btn btn-light delete-parcel-button" :disabled="!!busy || agentsRunning" aria-label="Borrar parcela seleccionada" title="Borrar parcela" @click="deleteConfirmation = true"><Trash2 /></button>
           <button v-if="selected" type="button" class="btn btn-light configure-parcel-button" :disabled="!!busy || agentsRunning" @click="openForm(selected)"><Pencil/><span class="sr-only">Configurar parcela</span></button>
-        </div>
+
+          <div v-if="mapGeometry" class="parcel-station-summary" aria-live="polite"><span>{{ headerStations.length === 1 ? 'Estación de la parcela' : 'Estaciones de la parcela' }}</span><small v-if="coverageLoading">Comprobando cobertura…</small><template v-else-if="headerStations.length"><strong v-for="station in headerStations" :key="station.station_id">{{ station.name }} <small>({{ station.coverage_pct.toLocaleString('es-PY', {maximumFractionDigits:1}) }}%)</small></strong></template><small v-else>Sin estación asignada</small></div>
+          <NuxtLink v-if="selected" class="btn btn-light parcel-alerts-button" :to="`/fecoclima-ia/suscripciones?parcela=${selected.id}`" title="Recibir alertas para esta parcela"><Bell aria-hidden="true" /><span>Recibir alertas</span></NuxtLink>
+          </div>
       <div class="view-switch" role="group" aria-label="Vista del análisis">
         <button type="button" :aria-pressed="!technical" :class="{ active: !technical }" @click="technical = false">Productor</button
         ><button type="button" :aria-pressed="technical" :class="{ active: technical }" @click="technical = true">Técnico</button>
@@ -1005,12 +1010,15 @@ onBeforeUnmount(() => {
           <h2 id="map-query-title">Elija el terreno que quiere analizar</h2>
          </div>
         <p class="map-scroll-hint">Explore el mapa, dibuje el límite de la parcela y revise si está dentro de la cobertura de las estaciones.</p>
-       
+
       </header>
       <div class="map-frame">
         <ClientOnly>
           <WorldParcelMap
+            station-climate
+            initial-station-view
             v-model="mapGeometry"
+            :technical="technical"
             confirm-clear
             :before-clear="deleteSelectedParcel"
             :clear-message="selected ? 'Se eliminará esta parcela guardada y se limpiarán sus widgets. Podrá crear otra en su lugar.' : 'Se borrará el polígono y se limpiarán sus widgets.'"
@@ -1049,7 +1057,7 @@ onBeforeUnmount(() => {
           <div v-if="spectralValues.length || imageryHistory.length>1" class="spectral-comparison-grid" :class="{'has-history':imageryHistory.length>1}">
             <SpectralHistory v-if="imageryHistory.length>1" variant="modern" :scenes="imageryHistory" :selected-scene-id="spectralScene?.id" />
             <div class="spectral-evidence">
-              <div class="spectral-evidence-heading"><span class="spectral-evidence-label">INDICADORES DE LA CAPTURA</span><p>Imagen e índices disponibles para la fecha indicada.</p></div>
+              <div class="spectral-evidence-heading"><span class="spectral-evidence-label">INDICADORES DE LA CAPTURA</span></div>
               <div v-if="spectralScene" class="spectral-meta"><span>Imagen: {{ dateLabel(spectralScene.captured_at) }}</span><span v-if="spectralScene.data_warning">{{ spectralScene.data_warning }}</span></div>
               <div v-if="spectralValues.length" class="spectral-values">
                 <div v-for="index in spectralValues" :key="index.key" class="spectral-value" :title="index.label + ': promedio válido de la parcela'">
@@ -1068,7 +1076,6 @@ onBeforeUnmount(() => {
             <p v-if="!previewEnabled && savedImagery.message.value" role="status" class="spectral-progress">{{ savedImagery.message.value }}</p>
             <p v-if="!previewEnabled && savedImagery.error.value" role="alert" class="spectral-warning">{{ savedImagery.error.value }}</p>
           </div>
-          <small>Los índices son indicios obtenidos por satélite, no diagnósticos de enfermedades o de humedad del suelo. La estación Meteorológica se determina por la cobertura de la parcela.</small>
         </section>
         <p v-if="!mapGeometry" class="flow-hint">1. Dibuje el polígono de su parcela en el mapa para comenzar.</p>
         <div v-else class="parcel-setup-columns">
@@ -1093,11 +1100,7 @@ onBeforeUnmount(() => {
           <template v-else-if="coveragePreview.eligible"><CheckCircle2 aria-hidden="true" /> Dentro de cobertura <span>{{ coveragePreview.coverage_pct.toLocaleString('es-PY', {maximumFractionDigits:1}) }}%</span></template>
           <template v-else>Área cubierta {{ coveragePreview.coverage_pct.toFixed(1) }}%. Pronto estaremos en tu zona; el análisis requiere al menos 99% de cobertura.</template>
         </div>
-        <p v-if="coveragePreview?.station_influences.length" class="influences-list">
-          Estaciones que cubren el polígono:
-          <span v-for="station in coveragePreview.station_influences" :key="station.station_id">{{ station.name }} ({{ station.coverage_pct.toFixed(1) }}%)</span>
-        </p>
-        <p v-else-if="mapGeometry && coveragePreview" class="no-influence">Ninguna estación con área de influencia configurada alcanza esta parcela.</p>
+        <p v-if="mapGeometry && coveragePreview && !coveragePreview.station_influences.length" class="no-influence">Ninguna estación con área de influencia configurada alcanza esta parcela.</p>
         <div class="analysis-action">
         <button class="btn btn-primary analyze-map" :disabled="!mapCanAnalyze" @click="analyzeDrawnParcel">
           <RefreshCw :class="{ spin: busy === 'analysis' || agentsRunning }" />
@@ -1175,12 +1178,9 @@ onBeforeUnmount(() => {
               <div class="condition-meter">
                 <strong>{{ window?.representative_alert?.conditions_met ?? '—' }} de {{ window?.representative_alert?.conditions_total ?? 6 }}</strong>
                 <span>condiciones cumplidas en la evaluación de referencia</span>
-                <InfoHint text="Normal, moderada y grave dependen de los umbrales de la regla publicada en Administración. Si faltan mediciones indispensables, se muestra Sin clasificación en lugar de asumir una alerta normal." />
+                <InfoHint text="Se conservan los umbrales de la regla publicada. Si una estación no reporta un sensor, se evalúan las señales disponibles sin reemplazarlo por cero. La evaluación parcial indica que las condiciones sin medir podrían cambiar la clasificación." />
               </div>
-              <div v-if="soilCriterionAdaptations.length" class="soil-criteria-explanation" role="note">
-                <strong>Criterio del suelo según el sensor</strong>
-                <p v-for="(item, i) in soilCriterionAdaptations" :key="i">{{ item.station }}: {{ item.message }}</p>
-              </div>
+
               <div v-if="coverageIssue" class="coverage-diagnostic" role="status">
                 Las estaciones con evaluaciones válidas cubren {{ window?.usable_coverage_pct?.toLocaleString('es-PY', {maximumFractionDigits: 1}) }}% de la parcela. Se requiere al menos 99% de cobertura evaluable.
               </div>
@@ -1224,7 +1224,8 @@ onBeforeUnmount(() => {
               <h2>{{ context.phenology.stage_name }}</h2>
               <p>{{ context.phenology.days_after_planting }} días desde la siembra</p>
               <p>{{ widgetSummary(context.phenology.description) }}</p>
-              <progress v-if="context.phenology.stage_progress_pct != null" :value="context.phenology.stage_progress_pct" max="100" aria-label="Progreso estimado de la etapa fenológica" style="width:100%" /><small>Estimación por calendario. Confirme la etapa en campo.</small>
+              <progress v-if="context.phenology.stage_progress_pct != null" :value="context.phenology.stage_progress_pct" max="100" aria-label="Progreso estimado de la etapa fenológica" style="width:100%" />
+              <WaterBalanceCard v-if="context.water_balance" :balance="context.water_balance" :crop-code="context.crop.code" :stage-code="context.phenology.stage_code" :timeline="context.phenology.timeline" :criterion="chatVisibleResults('PHENOLOGY_ANALYSIS')" :technical="technical" />
               <details v-if="technical">
                 <summary>Calendario fenológico</summary>
                 <p v-for="stage in context.phenology.timeline" :key="stage.code">
@@ -1241,8 +1242,8 @@ onBeforeUnmount(() => {
               </button>
               <div v-show="!collapsedWidgets[4]" :id="`${widgetIdPrefix}-widget-4`" class="widget-body">
               <h2>Qué está pasando y qué hacer en su parcela</h2>
-              <div class="diagnosis-timeframes"><span>Observado: últimas {{ analysisHours }} horas</span><span>Pronóstico: próximos 3 días</span></div>
-              <ParcelInterpretation v-if="parcelGuidance" :result="parcelGuidance" />
+
+              <ParcelInterpretation v-if="parcelGuidance" :result="parcelGuidance" :technical="technical" />
               <p v-else>
                 Genere la interpretación para entender qué muestran el clima, el cultivo y la imagen,
                 qué merece atención y qué acciones conviene priorizar.
@@ -1258,8 +1259,10 @@ onBeforeUnmount(() => {
                 <Bot /> {{ busy === 'ORCHESTRATOR' ? 'Interpretando…' : chatVisibleResults('ORCHESTRATOR') ? 'Actualizar recomendaciones' : 'Generar recomendaciones' }}
               </button>
               <details><summary>Posibles enfermedades y evidencia agronómica</summary><ul v-if="diseaseNames.length"><li v-for="name in diseaseNames" :key="name">{{ name }}</li></ul><p v-else>{{ window?.level === 'DATOS_INSUFICIENTES' ? 'La evaluación está limitada por las condiciones sin dato compatible.' : 'Las reglas no señalaron enfermedades posibles con los datos disponibles.' }} Estas señales requieren revisión en campo.</p><small>Se cruzan clima, etapa del cultivo, imágenes y documentos técnicos. Una señal de riesgo no confirma una enfermedad.</small></details>
+              <details v-if="context.documentary_monitoring?.length"><summary>Guía documental de inspección para esta etapa</summary><p>Referencias para orientar la recorrida; no son enfermedades detectadas en esta parcela.</p><details v-for="guide in context.documentary_monitoring" :key="guide.name"><summary>{{ guide.name }}</summary><h4>Síntomas descritos en la referencia</h4><p v-for="symptom in guide.symptoms" :key="symptom">{{ symptom }}</p><h4>Inspección en campo</h4><p v-for="step in guide.inspection" :key="step">{{ step }}</p><small v-if="technical">{{ guide.document }} · {{ guide.page_or_section }}</small></details></details>
+              <details v-if="technical && context.reference_sources?.length"><summary>Fuentes de trabajo de los agentes</summary><p v-for="source in context.reference_sources" :key="source.sha256">{{ source.document }}</p><small>Referencias documentales revisadas. El calendario y las reglas publicados conservan prioridad.</small></details>
               <div v-if="parcelGuidance && parcelGuidance.status !== 'disabled'" class="guidance-chat">
-                <p>Puede profundizar en estas recomendaciones y compartir lo que observa en el terreno.</p>
+
                 <button type="button" class="btn btn-light" @click="continueAnalysisInChat"><MessageCircle /> Profundizar en el chat</button>
               </div>
               </div>
@@ -1271,31 +1274,10 @@ onBeforeUnmount(() => {
               </button>
               <div v-show="!collapsedWidgets[5]" :id="`${widgetIdPrefix}-widget-5`" class="widget-body">
               <h2>Prepárese para los próximos 3 días</h2>
-              <div v-if="context.forecast.days.length" class="forecast-days">
-                <article v-for="day in context.forecast.days" :key="day.date">
-                  <b>{{ dateLabel(day.date) }}</b>
-                  <p>{{ day.temperature_min_c ?? '—' }} a {{ day.temperature_max_c ?? '—' }} °C</p>
-                  <span>{{ day.precipitation_mm ?? '—' }} mm de lluvia</span>
-                </article>
-              </div>
-              <p v-else>El pronóstico no está disponible. Vuelva a analizar más tarde.</p>
-              <small>Previsión para los próximos 3 días en su parcela. La lluvia anunciada puede cambiar; compruebe las condiciones antes de realizar labores.</small>
-              <details v-if="technical">
-                <summary>Regresión sobre el historial de las estaciones</summary>
-                <article v-for="trend in context.historical_regression" :key="trend.station_id">
-                  <h3>{{ trend.name }}</h3>
-                  <p v-if="trend.status !== 'COMPLETED'">
-                    Se requieren al menos siete días con cobertura suficiente.
-                  </p>
-                  <pre v-else>{{ JSON.stringify(trend.days, null, 2) }}</pre>
-                </article>
-                <small
-                  >La tendencia estadística se calcula en Python y se presenta separada del pronóstico.</small
-                >
-              </details>
+              <PredictionForecast :forecast="context.forecast" :technical="technical" />
               <button class="text-action" :disabled="!!busy" @click="interpret('WEATHER_ANALYSIS')">
                 Interpretar pronóstico</button
-              ><ParcelInterpretation :result="chatVisibleResults('WEATHER_ANALYSIS')" />
+              ><ParcelInterpretation :result="chatVisibleResults('WEATHER_ANALYSIS')" :technical="technical" />
               </div>
             </section>
             <section id="parcel-analysis-chat" class="panel widget chat whatsapp-chat" :class="{ 'widget-collapsed': collapsedWidgets[6] }" aria-label="Chat de FECOCLIMA IA"><button type="button" class="widget-kicker widget-collapse-toggle" :aria-expanded="!collapsedWidgets[6]" :aria-controls="`${widgetIdPrefix}-widget-6`" @click="toggleWidget(6)">
@@ -2147,3 +2129,5 @@ dd {
 .steps-flow>.widget.widget-collapsed{padding:12px!important;gap:0!important;border-width:1px!important}
 .steps-flow>.widget.widget-collapsed>.widget-collapse-toggle{min-height:48px;padding:8px 11px;border-radius:8px;line-height:1.4}
 </style>
+
+<style scoped>.parcel-station-summary{display:grid;gap:3px;align-self:end;min-height:42px;max-width:240px;padding:6px 10px;border:1px solid #c8dfdf;border-radius:9px;background:#eff8f5}.parcel-station-summary>span{font-size:.65rem;color:#58786e}.parcel-station-summary strong{font-size:.77rem;color:#205d50;overflow-wrap:anywhere}.parcel-station-summary small{font-size:.67rem;font-weight:500;color:#58786e}@media(max-width:700px){.parcel-station-summary{max-width:none;flex:1 1 100%}}</style>

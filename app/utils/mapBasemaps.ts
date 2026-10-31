@@ -12,12 +12,12 @@ export interface RasterBasemap {
 // EOX's 2016 mosaic is CC BY 4.0. Later editions have different licenses.
 // This is a historical navigation background, not the parcel's current scene.
 export const openSatelliteBasemap: RasterBasemap = {
-  id: 'eox-sentinel-2016',
+  id: 'open-eox-cloudless',
   tiles: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg',
   maxZoom: 14,
   credit: 'EOxCloudless · Copernicus 2016/2017 · CC BY 4.0',
   creditUrl: 'https://cloudless.eox.at/license-non-commercial',
-  attribution: '<a href="https://maps.eox.at/">EOX</a> · Copernicus 2016/2017 · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
+  attribution: '<a href="https://maps.eox.at/">EOxCloudless by EOX</a> · Contains modified Copernicus Sentinel data 2016 &amp; 2017 · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
 }
 
 export const streetBasemap: RasterBasemap = {

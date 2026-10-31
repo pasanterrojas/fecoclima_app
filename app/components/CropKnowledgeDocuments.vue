@@ -4,6 +4,7 @@ interface CropDocument { id:string; title:string; filename?:string; index_status
 const props = defineProps<{ cropId?: string }>()
 const { request } = useApi()
 const documents = ref<CropDocument[]>([])
+const defaultSources = ref<{ document: string; sha256: string }[]>([])
 const pending = ref<File[]>([])
 const busy = ref(false), error = ref(''), notice = ref('')
 const removing = ref<CropDocument>()
@@ -12,6 +13,8 @@ async function load() {
   if (!props.cropId) return
   try { documents.value = (await request<{items:CropDocument[]}>('/knowledge/documents',{query:{crop_id:props.cropId,limit:250}})).items }
   catch { error.value = 'No se pudieron consultar los documentos.' }
+  try { defaultSources.value = (await request<{items:typeof defaultSources.value}>('/admin/consultation-reports/sources', {query:{crop_id:props.cropId}})).items || [] }
+  catch { defaultSources.value = [] }
 }
 async function uploadPending(crop: {id:string}) {
   busy.value = true; error.value = ''
@@ -54,8 +57,9 @@ watch(()=>props.cropId,load,{immediate:true})
   <section class="crop-documents" :aria-busy="busy">
     <div class="row-between"><div class="knowledge-heading"><span class="knowledge-icon"><BookOpen /></span><div><span class="knowledge-eyebrow">3. CONOCIMIENTO COMPARTIDO</span><h2 class="section-title">Documentos técnicos del cultivo</h2></div></div><button v-if="cropId" class="btn btn-light" type="button" :disabled="busy" @click="sync"><RefreshCw />Sincronizar agentes</button></div>
     <p class="form-help knowledge-intro">Suba los manuales una sola vez. Todos los agentes asociados a este cultivo los reciben como base de conocimiento.</p>
+    <details v-if="defaultSources.length" class="notice"><summary>Base de trabajo del cliente incorporada a los agentes</summary><p v-for="source in defaultSources" :key="source.sha256">{{ source.document }}</p><small>Contenido revisado y versionado. El calendario y las reglas publicados conservan prioridad sobre instrucciones y ejemplos de los documentos.</small></details>
     <p v-if="error" class="notice notice-danger" role="alert">{{ error }}</p><p v-if="notice" class="notice notice-success" role="status">{{ notice }}</p>
-    <label class="document-upload"><UploadCloud /><span class="upload-description"><span class="label">Agregar documentos</span><small>PDF, Word (.docx), TXT o Markdown</small><input type="file" multiple :disabled="busy" accept=".pdf,.docx,.txt,.md" @change="pending=Array.from(($event.target as HTMLInputElement).files || [])" /></span></label>
+    <label class="document-upload"><UploadCloud /><span class="upload-description"><span class="label">Agregar documentos</span><small>PDF, Word (.docx), Excel (.xlsx), TXT o Markdown</small><input type="file" multiple :disabled="busy" accept=".pdf,.docx,.xlsx,.txt,.md" @change="pending=Array.from(($event.target as HTMLInputElement).files || [])" /></span></label>
     <div v-if="pending.length" class="pending-files"><span v-for="file in pending" :key="`${file.name}-${file.lastModified}`"><FileText />{{ file.name }}</span><small v-if="!cropId">Se subirán al guardar el cultivo.</small></div>
     <button v-if="cropId && pending.length" type="button" class="btn btn-primary" :disabled="busy" @click="upload">{{ busy ? 'Subiendo…' : 'Subir documentos' }}</button>
     <p v-if="documents.length" class="knowledge-count"><span>{{ documents.length }} {{ documents.length === 1 ? 'documento' : 'documentos' }}</span><span>{{ indexedCount }} listos para consultar</span></p>

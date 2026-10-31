@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BellRing, Bot, CloudSun, Gauge, History, LayoutDashboard, MapPinned, ShieldCheck, Sprout, X } from 'lucide-vue-next'
+import { BellRing, Bot, CloudSun, FileText, Gauge, History, LayoutDashboard, MapPinned, ShieldCheck, Sprout, X } from 'lucide-vue-next'
 defineProps<{ open: boolean; mobileMode?: boolean }>()
 defineEmits<{ close: [] }>()
 const route = useRoute()
@@ -14,6 +14,7 @@ const groups = [
   ] },
   { label: 'Monitoreo', items: [
     { to: '/fecoclima-ia/admin/parcelas', label: 'Parcelas', icon: MapPinned },
+    { to: '/fecoclima-ia/admin/reportes', label: 'Reportes', icon: FileText },
     { to: '/fecoclima-ia/admin/auditoria', label: 'Auditoría', icon: History },
   ] },
 ]
