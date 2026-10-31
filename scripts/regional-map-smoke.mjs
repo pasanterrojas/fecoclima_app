@@ -105,6 +105,7 @@ async function cleanup() {
   if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 
+const esriBasemap=process.env.MAP_TEST_BASEMAP==='esri'
 const calls=[]
 const geometry={type:'Polygon',coordinates:[[[-55.3,-25.3],[-54.7,-25.3],[-54.7,-24.7],[-55.3,-24.7],[-55.3,-25.3]]]}
 const station={id:'station-1',name:'Estación abierta',latitude:-25,longitude:-55,influence_geojson:geometry,influence_radius_m:30000,values:{temperature:27,rain:39,humidity:null},statuses:{temperature:'AVAILABLE',rain:'AVAILABLE',humidity:'NOT_REPORTED'},coverage_pct:{temperature:100,rain:100,humidity:0},latest_at:'2026-10-30T12:00:00Z',stale:false,altitude_m:100}
@@ -114,7 +115,8 @@ let gets=0
 async function intercept(event){
  const url=new URL(event.request.url),path=url.pathname.split('/api/v1')[1]||'';calls.push({path,method:event.request.method,url:event.request.url})
  let value={},status=200,contentType='application/json'
- if(path==='/public/stations')value=fixtureStations
+ if(url.hostname==='services.arcgisonline.com'){contentType='image/png'}
+ else if(path==='/public/stations')value=fixtureStations
  else if(path==='/public/parcels/browser-session')value={browser_id:'11111111-1111-4111-8111-111111111111',access_token:'fixture',limit:3}
  else if(path==='/public/parcels')value={items:[]}
  else if(path==='/public/map/analyses')value={job_id:'fixture-job',status:'PENDING'}
@@ -163,11 +165,11 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
 
   socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.method==='Fetch.requestPaused')void intercept(message.params).catch(error=>exceptions.push(String(error)))})
-  await send('Fetch.enable',{patterns:[{urlPattern:'*/api/v1/*'}]})
+  await send('Fetch.enable',{patterns:[{urlPattern:'*/api/v1/*'},...(process.env.MAP_TEST_MOCK_TILES==='1'?[{urlPattern:'*services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/*'}]:[])]})
   await send('Page.navigate',{url:appUrl})
   await waitFor(()=>evaluate(`document.querySelectorAll('.regional-map .leaflet-marker-icon').length===4`),'station locations without analysis')
   assert.equal(calls.filter(c=>c.path==='/public/map/analyses'&&c.method==='POST').length,0,'No source refresh on opening')
-  assert(await evaluate(`document.querySelector('.regional-map .leaflet-tile').src.includes('s2cloudless_3857')`),'Open satellite default')
+  assert(await evaluate(`document.querySelector('.regional-map .leaflet-tile').src.includes('${esriBasemap?'World_Imagery/MapServer/tile/':'s2cloudless_3857'}')`),'Configured satellite default')
   assert.equal(await evaluate(`document.querySelectorAll('.regional-map canvas').length`),0)
   await evaluate(`document.querySelector('.analyze').click()`)
   await waitFor(()=>evaluate(`document.querySelector('.map-panel').textContent.includes('3 de 4 estaciones')`),'72-hour snapshot')
@@ -189,9 +191,10 @@ try {
   for(let attempt=0;attempt<8;attempt++){await evaluate(`document.querySelector('.regional-map .leaflet-control-zoom-in').click()`);await pause(400)}
   assert(!calls.some(c=>c.path.startsWith('/public/map/imagery')),'Zoom keeps the clear general basemap without detailed imagery requests')
   assert(await evaluate(`!document.querySelector('.detail-status')`),'No detailed coverage or mosaic controls')
-  assert(await evaluate(`!!document.querySelector('img.leaflet-tile[src*="s2cloudless_3857"]')`),'General satellite basemap remains visible when zooming')
+  assert(await evaluate(`!!document.querySelector('img.leaflet-tile[src*="${esriBasemap?'World_Imagery/MapServer/tile/':'s2cloudless_3857'}"]')`),'General satellite basemap remains visible when zooming')
   assert.equal(calls.filter(c=>c.path==='/public/map/analyses'&&c.method==='POST').length,1)
-  assert(!calls.some(c=>/esri|maptiler|arcgis/i.test(c.url)),'No paid map service')
+  assert(!calls.some(c=>/maptiler/i.test(c.url)),'No MapTiler service')
+  assert(await evaluate(`document.querySelector('.leaflet-control-attribution').textContent.includes('${esriBasemap?'Esri':'EOxCloudless'}')`),'Selected basemap keeps its required attribution')
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true})
   await reload()
   await waitFor(()=>evaluate(`!!document.querySelector('.map-panel dl')||document.querySelector('.map-panel').textContent.includes('3 de 4 estaciones')`),'restored analysis after reload')

@@ -3,8 +3,9 @@ import type * as Leaflet from 'leaflet'
 import type { GeoJsonObject } from 'geojson'
 import type { MapStation, MapParcel } from '~/types/plots'
 import type { RegionalAnalysis, RegionalSnapshot } from '~/types/regionalMap'
-import { openSatelliteBasemap, streetBasemap, navigationOverlay } from '~/utils/mapBasemaps'
+import { streetBasemap, navigationOverlay } from '~/utils/mapBasemaps'
 import { MapPin, Layers, Mountain, CloudSun, RefreshCw } from 'lucide-vue-next'
+const satelliteBasemap = useSatelliteBasemap()
 const publicApi=useApi(), parcelApi=usePublicParcelApi()
 const stations=ref<MapStation[]>([]), parcels=ref<MapParcel[]>([]), snapshot=ref<RegionalSnapshot|null>(null), job=ref('')
 const busy=ref(false), loading=ref(true), error=ref(''), layerError=ref(''), riverError=ref(''), parcelError=ref('')
@@ -99,9 +100,9 @@ function mapReady(instance:Leaflet.Map){instance.createPane('terrainPane').style
         <section v-if="comparison.length"><h2>Comparar estaciones</h2><button v-for="s in comparison" :key="s.id" type="button" class="comparison-row" :class="{chosen:selected===s.id}" @click="selected=s.id"><i :style="{background:valueColor(s.values[variable]!)}"/><span>{{s.name}}</span><b>{{number(s.values[variable])}} {{currentVariable?.unit}}</b></button></section><section v-if="terrain||snapshot"><label class="field">Intensidad de las capas<input v-model.number="opacity" type="range" min="0.15" max="1" step="0.05"></label></section>
         <section v-if="selected"><h2><MapPin/>{{stationName}}</h2><template v-if="currentStation"><dl><template v-for="v in variables" :key="v.id"><dt>{{v.label}}</dt><dd>{{number(currentStation.values[v.id])}}<span v-if="currentStation.values[v.id]!=null"> {{v.unit}}</span></dd></template></dl><small v-if="currentStation.statuses[variable]!=='AVAILABLE'">{{statusText[currentStation.statuses[variable]||'']||'Lectura pendiente de revisión.'}}</small><small>Última lectura: {{currentStation.latest_at?time(currentStation.latest_at):'Sin registro reciente'}}.</small></template><small v-else>Pulse «Analizar» para consultar sus lecturas.</small></section>
       </aside>
-      <div class="map-canvas"><LeafletParcelEditor ref="editor" read-only :stations="visibleStations" :parcels="showParcels?parcels:[]" :show-influence="influence" :station-values="stationValues" :basemap="base==='satellite'?openSatelliteBasemap:streetBasemap" :labels-basemap="base==='satellite'&&labels?navigationOverlay:null" @map-ready="mapReady" @select-station="selected=$event"/><div class="map-badge">{{visibleStations.length}} estaciones{{snapshot?' con lectura':''}} · datos abiertos</div><p v-if="layerError" class="layer-notice" role="status">{{layerError}}</p></div>
+      <div class="map-canvas"><LeafletParcelEditor ref="editor" read-only :stations="visibleStations" :parcels="showParcels?parcels:[]" :show-influence="influence" :station-values="stationValues" :basemap="base==='satellite'?satelliteBasemap:streetBasemap" :labels-basemap="base==='satellite'&&labels?navigationOverlay:null" @map-ready="mapReady" @select-station="selected=$event"/><div class="map-badge">{{visibleStations.length}} estaciones{{snapshot?' con lectura':''}}</div><p v-if="layerError" class="layer-notice" role="status">{{layerError}}</p></div>
     </div>
-    <p class="map-note">Fondo satelital histórico despejado para navegar. Las imágenes recientes y las capas del cultivo siguen en «Mi parcela».</p>
+    <p class="map-note">{{ satelliteBasemap.id === 'esri-world-imagery' ? 'Fondo satelital Esri World Imagery.' : 'Fondo satelital histórico despejado para navegar.' }} Las imágenes recientes y las capas del cultivo siguen en «Mi parcela».</p>
   </section>
 </template>
 <style scoped>

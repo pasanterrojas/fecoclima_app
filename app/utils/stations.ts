@@ -1,3 +1,4 @@
+import stationMarkerAsset from '~/assets/icons/weather-station-marker.svg?url&no-inline'
 import type { Geometry, MapStation } from '~/types/plots'
 
 const stationPalette = ['#f94144', '#277da1', '#f9c74f', '#90be6d', '#9b5de5', '#f3722c', '#00b4d8', '#f15bb5']
@@ -7,7 +8,8 @@ export function stationDisplayColor(station: MapStation, index = 0): string {
   return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color : stationPalette[index % stationPalette.length]!
 }
 
-export const weatherStationIconUrl = '/fecoclima-estacion-marcador.svg'
+// Build under the application asset prefix so reverse proxies can serve it.
+export const weatherStationIconUrl = stationMarkerAsset
 
 export interface AdminStation extends MapStation {
   code: string

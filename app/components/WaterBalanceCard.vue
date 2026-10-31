@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import stageImage6 from '~/assets/references/soy-phenology/stage-reference-6.png?url&no-inline'
+import stageImage7 from '~/assets/references/soy-phenology/stage-reference-7.png?url&no-inline'
+import stageImage8 from '~/assets/references/soy-phenology/stage-reference-8.png?url&no-inline'
+import stageImage10 from '~/assets/references/soy-phenology/stage-reference-10.png?url&no-inline'
+import stageImage11 from '~/assets/references/soy-phenology/stage-reference-11.png?url&no-inline'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import type { Interpretation, StageWaterTotal, WaterBalance } from '~/types/plots'
@@ -38,16 +43,16 @@ const future = (stage: StageWaterTotal) => stage.closed_days === 0 && stage.stag
 const gap = computed(() => current.value?.gap_compared_mm ?? null)
 function stageIllustration(stageCode: string) {
   if (!soy.value) return null
-  const stages: Record<string, { image: number; box: string; label: string }> = {
-    V1: { image: 6, box: '215 320 220 300', label: 'Primeras hojas · V1' },
-    'V2-V4': { image: 6, box: '840 315 260 305', label: 'Desarrollo vegetativo · V3 como referencia' },
-    'V5-V8': { image: 7, box: '855 300 290 320', label: 'Desarrollo vegetativo · V6 como referencia' },
-    V9: { image: 7, box: '855 300 290 320', label: 'Referencia de desarrollo vegetativo · V6' },
-    R1: { image: 8, box: '270 295 275 325', label: 'Inicio de floración · R1' },
-    R3: { image: 8, box: '770 295 250 325', label: 'Formación de vainas · R3' },
-    R5: { image: 10, box: '515 295 270 325', label: 'Llenado de granos · R5' },
-    R7: { image: 11, box: '580 295 285 330', label: 'Inicio de maduración · R7' },
-    R8: { image: 11, box: '850 295 245 330', label: 'Maduración plena · R8' },
+  const stages: Record<string, { image: string; box: string; label: string }> = {
+    V1: { image: stageImage6, box: '215 320 220 300', label: 'Primeras hojas · V1' },
+    'V2-V4': { image: stageImage6, box: '840 315 260 305', label: 'Desarrollo vegetativo · V3 como referencia' },
+    'V5-V8': { image: stageImage7, box: '855 300 290 320', label: 'Desarrollo vegetativo · V6 como referencia' },
+    V9: { image: stageImage7, box: '855 300 290 320', label: 'Referencia de desarrollo vegetativo · V6' },
+    R1: { image: stageImage8, box: '270 295 275 325', label: 'Inicio de floración · R1' },
+    R3: { image: stageImage8, box: '770 295 250 325', label: 'Formación de vainas · R3' },
+    R5: { image: stageImage10, box: '515 295 270 325', label: 'Llenado de granos · R5' },
+    R7: { image: stageImage11, box: '580 295 285 330', label: 'Inicio de maduración · R7' },
+    R8: { image: stageImage11, box: '850 295 245 330', label: 'Maduración plena · R8' },
   }
   return stages[stageCode] || null
 }
@@ -69,10 +74,10 @@ const options = { responsive: true, maintainAspectRatio: false, animation: false
       <div class="rain-cycle" :style="{ minWidth: `${Math.max(620, visibleStages.length * 140)}px` }">
         <div class="water-chart"><Line :data="chart" :options="options" aria-label="Área roja: lluvia requerida por etapa. Área verde: lluvia acontecida hasta el análisis." /></div>
         <div class="stage-cards" :style="{ gridTemplateColumns: `repeat(${Math.max(1, visibleStages.length)}, minmax(0, 1fr))` }">
-          <article v-for="stage in visibleStages" :key="stage.stage_code" class="stage-card" :class="{ current: stage.stage_code === code, future: future(stage) }" :aria-current="stage.stage_code === code ? 'step' : undefined">
+          <article v-for="stage in visibleStages" :key="stage.stage_code" :data-stage-code="stage.stage_code" class="stage-card" :class="{ current: stage.stage_code === code, future: future(stage) }" :aria-current="stage.stage_code === code ? 'step' : undefined">
             <h4>{{ label(stage.stage_code) }}<small v-if="stage.stage_code === code">Etapa actual</small></h4>
             <div class="stage-illustration">
-              <svg v-if="stageIllustration(stage.stage_code)" :viewBox="stageIllustration(stage.stage_code)!.box" role="img" :aria-label="stageIllustration(stage.stage_code)!.label"><image :href="`/references/soy-phenology/stage-reference-${stageIllustration(stage.stage_code)!.image}.png`" width="1366" height="768" /></svg>
+              <svg v-if="stageIllustration(stage.stage_code)" :viewBox="stageIllustration(stage.stage_code)!.box" role="img" :aria-label="stageIllustration(stage.stage_code)!.label"><image :href="stageIllustration(stage.stage_code)!.image" width="1366" height="768" /></svg>
               <span v-else class="stage-placeholder">{{ label(stage.stage_code) }}</span>
             </div>
             <p v-if="endDate(stage.stage_code)">Hasta el <b>{{ endDate(stage.stage_code) }}</b></p>

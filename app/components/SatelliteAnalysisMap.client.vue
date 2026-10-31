@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { weatherStationIconUrl } from '~/utils/stations'
-import { openSatelliteBasemap as basemap } from '~/utils/mapBasemaps'
+const basemap = useSatelliteBasemap()
 import { Crosshair, Image, Layers3, Maximize2, ZoomIn, ZoomOut } from 'lucide-vue-next'
 
 type Coordinate = [number, number]

@@ -4,9 +4,10 @@ import type { RegionalSnapshot } from '~/types/regionalMap'
 import type { Map as LeafletMap } from 'leaflet'
 import { recentImageryScenes, imagerySceneLabels } from '~/utils/imageryHistory'
 import { stationDisplayColor } from '~/utils/stations'
-import { openSatelliteBasemap, streetBasemap, navigationOverlay } from '~/utils/mapBasemaps'
+import { streetBasemap, navigationOverlay } from '~/utils/mapBasemaps'
 import { parcelDisplayColor } from '~/utils/parcelColors'
 import type { Geometry, MapStation, MapParcel, SpectralVisualization } from '~/types/plots'
+const satelliteBasemap = useSatelliteBasemap()
 const props = defineProps<{
   modelValue: Geometry | null; stations: MapStation[]; parcels?: MapParcel[]; selectedParcelId?: string
   parcelColor?: string; selectionDisabled?: boolean; coverage?: number | null
@@ -55,7 +56,7 @@ const imageryNames:Record<string,string>={rgb:'Color real',ndvi:'NDVI',ndre:'NDR
 const imageryLabels:Record<string,string>={rgb:'Color real',ndvi:'Vegetación',ndre:'Clorofila',ndmi:'Humedad vegetal',ndwi:'Agua en superficie',evi:'Vegetación densa',savi:'Vegetación y suelo',gndvi:'Verdor',nbr:'Cobertura vegetal',msi:'Señal de sequedad',recl:'Clorofila'}
 const imageryIcon=(key:string)=>['ndmi','ndwi','msi'].includes(key)?Droplets:key==='rgb'?Satellite:Leaf
 const basemapLabel=computed(()=>styleChoice.value==='streets'?'Calles':'Satélite abierto')
-const basemap=computed(()=>styleChoice.value==='streets'?streetBasemap:openSatelliteBasemap)
+const basemap=computed(()=>styleChoice.value==='streets'?streetBasemap:satelliteBasemap)
 function changeStyle(style:'satellite'|'streets'){styleChoice.value=style}
 async function toggleSidebar(){sidebarHidden.value=!sidebarHidden.value;if(!sidebarHidden.value)controlsOpen.value=true;await nextTick();editor.value?.resize()}
 function fitAllParcels(){editor.value?.fitAllParcels()}

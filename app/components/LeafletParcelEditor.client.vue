@@ -3,7 +3,7 @@ import type * as Leaflet from 'leaflet'
 import type { GeoJsonObject, FeatureCollection } from 'geojson'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw/dist/leaflet.draw.css'
-import { openSatelliteBasemap, navigationOverlay, type RasterBasemap } from '~/utils/mapBasemaps'
+import { navigationOverlay, type RasterBasemap } from '~/utils/mapBasemaps'
 import { stationDisplayColor, stationRadiusPreview, weatherStationIconUrl } from '~/utils/stations'
 import { parcelDisplayColor } from '~/utils/parcelColors'
 import type { Geometry, MapStation, MapParcel } from '~/types/plots'
@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<{
   latitude?: number | string | null; longitude?: number | string | null; radius?: number | string | null
   initialStationView?: boolean; initialZoom?: number; parcelMode?: boolean; compactControls?: boolean; confirmClear?: boolean
   beforeClear?: () => Promise<boolean>; clearMessage?: string
-}>(), { stations: () => [], parcels: () => [], showInfluence: true, basemap: () => openSatelliteBasemap,
+}>(), { stations: () => [], parcels: () => [], showInfluence: true, basemap: () => useSatelliteBasemap(),
   labelsBasemap: () => navigationOverlay, scrollZoom: true, overlayOpacity: .75, initialZoom: 6, radius: 750 })
 const emit = defineEmits<{ 'update:modelValue': [geometry: Geometry | null]; 'update:latitude': [latitude: number]; 'update:longitude': [longitude: number]; 'select-parcel': [id: string]; 'basemap-error': []; 'map-ready': [map: Leaflet.Map]; 'select-station': [id: string] }>()
 const root = ref<HTMLElement>(), element = ref<HTMLElement>(), ready = ref(false), drawing = ref(false), editing = ref(false), askClear = ref(false), error = ref('')
@@ -82,7 +82,7 @@ function refreshStations() {
     let icon: Leaflet.Icon|Leaflet.DivIcon=L.icon({iconUrl:weatherStationIconUrl,iconSize:[36,42],iconAnchor:[18,40],className:'weather-station-marker'})
     const reading=props.stationValues?.[station.id]
     if(reading){const content=document.createElement('span');content.className='station-value';content.style.borderColor=reading.color;content.style.color='#153746';content.style.setProperty('--reading-color',reading.color);content.textContent=reading.value==null?'':`${reading.value.toLocaleString('es-PY',{maximumFractionDigits:2})} ${reading.unit}`;content.setAttribute('data-station-value',station.id);icon=L.divIcon({html:content,className:'station-reading-marker',iconSize:[88,36],iconAnchor:[44,18]})}
-    const marker = L.marker([station.latitude,station.longitude],{icon,title:station.name})
+    const marker = L.marker([station.latitude,station.longitude],{icon,title:station.name,alt:station.name})
     const label = document.createElement('span'); label.textContent = station.name;label.style.borderLeft=`3px solid ${color}`;label.style.paddingLeft='5px'
     marker.bindTooltip(label,{direction:'top'}).on('click',()=>emit('select-station',station.id)).addTo(markers)
   })
@@ -126,8 +126,9 @@ function fitInitialStations() {
   const bounds = L.latLngBounds(locations.map(s => [s.latitude!, s.longitude!] as [number,number]))
   map.invalidateSize({pan:false})
   // Fit station locations, without distant parcels or influence polygons widening
-  // the initial view. Leaflet chooses the closest zoom that fits every marker.
-  map.fitBounds(bounds,{padding:[45,45],maxZoom:map.getMaxZoom(),animate:false})
+  // the initial view. Do not overscale a single/clustered station beyond the
+  // basemap resolution: an automatic zoom of 21 magnifies individual pixels.
+  map.fitBounds(bounds,{padding:[45,45],maxZoom:Math.min(map.getMaxZoom(),props.basemap.maxZoom),animate:false})
   initialStationsFitted = true
 }
 
@@ -145,7 +146,7 @@ function updatePoint() {
   const hadPoint = !!point
   const location: Leaflet.LatLngTuple = [Number(props.latitude),Number(props.longitude)]
   point?.remove(); circle?.remove()
-  point = L.marker(location,{draggable:!props.readOnly,icon:L.icon({iconUrl:weatherStationIconUrl,iconSize:[36,42],iconAnchor:[18,40]})}).addTo(map)
+  point = L.marker(location,{draggable:!props.readOnly,alt:'Estación meteorológica',icon:L.icon({iconUrl:weatherStationIconUrl,iconSize:[36,42],iconAnchor:[18,40]})}).addTo(map)
   point.on('dragend',()=>{const at=point!.getLatLng();emit('update:latitude',at.lat);emit('update:longitude',at.lng)})
   circle = L.circle(location,{radius:Number(props.radius)||750,color:props.polygonColor||'#287da1',fillOpacity:.12}).addTo(map)
   if (ready.value && (!hadPoint || !map.getBounds().contains(location))) map.setView(location,Math.max(12,map.getZoom()))

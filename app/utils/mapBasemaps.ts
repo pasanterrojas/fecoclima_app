@@ -20,6 +20,17 @@ export const openSatelliteBasemap: RasterBasemap = {
   attribution: '<a href="https://maps.eox.at/">EOxCloudless by EOX</a> · Contains modified Copernicus Sentinel data 2016 &amp; 2017 · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
 }
 
+// Public online tile endpoint; usage is subject to the applicable Esri license.
+// Native detail varies by location. Do not export or persist these tiles offline.
+export const esriWorldImageryBasemap: RasterBasemap = {
+  id: 'esri-world-imagery',
+  tiles: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  maxZoom: 19,
+  credit: 'Esri · Vantor · Earthstar Geographics · GIS User Community',
+  creditUrl: 'https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9',
+  attribution: 'Source: <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9">Esri, Vantor, Earthstar Geographics, and the GIS User Community</a> · <a href="https://goto.arcgis.com/termsofuse/viewsummary">Terms of use</a>',
+}
+
 export const streetBasemap: RasterBasemap = {
   id: 'openstreetmap', tiles: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19,
   credit: '© OpenStreetMap', creditUrl: 'https://www.openstreetmap.org/copyright',

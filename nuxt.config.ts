@@ -84,6 +84,8 @@ export default defineNuxtConfig({
         process.env.NUXT_PUBLIC_CSRF_COOKIE_NAME ||
         'csrf_token',
 
+      satelliteBasemap: process.env.NUXT_PUBLIC_SATELLITE_BASEMAP || 'eox',
+
       mapTilerKey: process.env.NUXT_PUBLIC_MAPTILER_KEY || ''
     }
   },
